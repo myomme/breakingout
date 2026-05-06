@@ -1,0 +1,86 @@
+{
+  "road": {
+    "label": "Road",
+    "color": "#d8d3c4",
+    "stroke": "#a69b83",
+    "textColor": "#403b32"
+  },
+  "wall": {
+    "label": "Wall",
+    "color": "#6f7378",
+    "stroke": "#494d52",
+    "textColor": "#ffffff"
+  },
+  "grass": {
+    "label": "Grass",
+    "color": "#486f45",
+    "stroke": "#2f5631",
+    "textColor": "#f2f7ed"
+  },
+  "bush": {
+    "label": "Grass",
+    "color": "#486f45",
+    "stroke": "#2f5631",
+    "textColor": "#f2f7ed"
+  },
+  "tree": {
+    "label": "Tree",
+    "color": "#3f5f33",
+    "stroke": "#263c20",
+    "textColor": "#eef6e8"
+  },
+  "water": {
+    "label": "Water",
+    "color": "#2f6877",
+    "stroke": "#1c4955",
+    "textColor": "#eef8fb"
+  },
+  "wrecked_car": {
+    "label": "Wreck",
+    "color": "#9a6b54",
+    "stroke": "#6f4a39",
+    "textColor": "#ffffff"
+  },
+  "building_marble": {
+    "label": "Building Marble",
+    "color": "#918a82",
+    "stroke": "#625d58",
+    "textColor": "#ffffff"
+  },
+  "building_wood": {
+    "label": "Building Wood",
+    "color": "#9d8164",
+    "stroke": "#6a523d",
+    "textColor": "#fff8ef"
+  },
+  "building": {
+    "label": "Building Marble",
+    "color": "#918a82",
+    "stroke": "#625d58",
+    "textColor": "#ffffff"
+  },
+  "iron_gate": {
+    "label": "Iron Gate",
+    "color": "#6e7477",
+    "stroke": "#474d50",
+    "textColor": "#ffffff"
+  },
+  "loot_zone_normal": {
+    "label": "Loot",
+    "color": "#c6b77c",
+    "stroke": "#97884d",
+    "textColor": "#2f2a15"
+  },
+  "loot_zone_rare": {
+    "label": "Rare",
+    "color": "#9f8ac7",
+    "stroke": "#735d9d",
+    "textColor": "#ffffff"
+  },
+  "extraction_zone": {
+    "label": "Extract",
+    "color": "#b9e86d",
+    "stroke": "#6b9c2e",
+    "textColor": "#20340f"
+  }
+}

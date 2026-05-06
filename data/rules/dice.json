@@ -1,0 +1,13 @@
+{
+  "weaponHitDie": {
+    "image": "./assets/ui/dice/weapon-hit-die.png",
+    "faces": [
+      { "id": "head", "label": "Head", "bodyPart": "head" },
+      { "id": "chest", "label": "Chest", "bodyPart": "chest" },
+      { "id": "legs", "label": "Legs", "bodyPart": "legs" },
+      { "id": "miss_1", "label": "Miss", "bodyPart": null },
+      { "id": "abdomen", "label": "Abdomen", "bodyPart": "abdomen" },
+      { "id": "miss_2", "label": "Miss", "bodyPart": null }
+    ]
+  }
+}

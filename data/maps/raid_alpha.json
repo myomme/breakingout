@@ -1,0 +1,53 @@
+{
+  "id": "raid_alpha",
+  "name": "Raid Alpha",
+  "layout": {
+    "coordinateSystem": "axial",
+    "hexSize": 42
+  },
+  "tiles": [
+    { "q": -3, "r": 0, "terrain": "extraction_zone", "walkable": true, "cover": "none", "blocksSight": false, "lootType": "none", "extractionPoint": true, "spawnPoint": false },
+    { "q": -3, "r": 1, "terrain": "road", "walkable": true, "cover": "none", "blocksSight": false, "lootType": "none", "extractionPoint": false, "spawnPoint": false },
+    { "q": -3, "r": 2, "terrain": "bush", "walkable": true, "cover": "light", "blocksSight": false, "lootType": "none", "extractionPoint": false, "spawnPoint": false },
+    { "q": -3, "r": 3, "terrain": "road", "walkable": true, "cover": "none", "blocksSight": false, "lootType": "none", "extractionPoint": false, "spawnPoint": true },
+
+    { "q": -2, "r": -1, "terrain": "road", "walkable": true, "cover": "none", "blocksSight": false, "lootType": "none", "extractionPoint": false, "spawnPoint": false },
+    { "q": -2, "r": 0, "terrain": "loot_zone_normal", "walkable": true, "cover": "light", "blocksSight": false, "lootType": "normal", "extractionPoint": false, "spawnPoint": false },
+    { "q": -2, "r": 1, "terrain": "wrecked_car", "walkable": true, "cover": "hard", "blocksSight": false, "lootType": "none", "extractionPoint": false, "spawnPoint": false },
+    { "q": -2, "r": 2, "terrain": "road", "walkable": true, "cover": "none", "blocksSight": false, "lootType": "none", "extractionPoint": false, "spawnPoint": false },
+    { "q": -2, "r": 3, "terrain": "bush", "walkable": true, "cover": "light", "blocksSight": false, "lootType": "none", "extractionPoint": false, "spawnPoint": false },
+
+    { "q": -1, "r": -2, "terrain": "road", "walkable": true, "cover": "none", "blocksSight": false, "lootType": "none", "extractionPoint": false, "spawnPoint": false },
+    { "q": -1, "r": -1, "terrain": "building", "walkable": true, "cover": "hard", "blocksSight": true, "lootType": "none", "extractionPoint": false, "spawnPoint": false },
+    { "q": -1, "r": 0, "terrain": "loot_zone_rare", "walkable": true, "cover": "hard", "blocksSight": true, "lootType": "rare", "extractionPoint": false, "spawnPoint": false },
+    { "q": -1, "r": 1, "terrain": "road", "walkable": true, "cover": "none", "blocksSight": false, "lootType": "none", "extractionPoint": false, "spawnPoint": false },
+    { "q": -1, "r": 2, "terrain": "wall", "walkable": false, "cover": "hard", "blocksSight": true, "lootType": "none", "extractionPoint": false, "spawnPoint": false },
+    { "q": -1, "r": 3, "terrain": "road", "walkable": true, "cover": "none", "blocksSight": false, "lootType": "none", "extractionPoint": false, "spawnPoint": false },
+
+    { "q": 0, "r": -3, "terrain": "road", "walkable": true, "cover": "none", "blocksSight": false, "lootType": "none", "extractionPoint": false, "spawnPoint": true },
+    { "q": 0, "r": -2, "terrain": "bush", "walkable": true, "cover": "light", "blocksSight": false, "lootType": "none", "extractionPoint": false, "spawnPoint": false },
+    { "q": 0, "r": -1, "terrain": "road", "walkable": true, "cover": "none", "blocksSight": false, "lootType": "none", "extractionPoint": false, "spawnPoint": false },
+    { "q": 0, "r": 0, "terrain": "road", "walkable": true, "cover": "none", "blocksSight": false, "lootType": "none", "extractionPoint": false, "spawnPoint": false },
+    { "q": 0, "r": 1, "terrain": "wrecked_car", "walkable": true, "cover": "hard", "blocksSight": false, "lootType": "none", "extractionPoint": false, "spawnPoint": false },
+    { "q": 0, "r": 2, "terrain": "loot_zone_normal", "walkable": true, "cover": "light", "blocksSight": false, "lootType": "normal", "extractionPoint": false, "spawnPoint": false },
+    { "q": 0, "r": 3, "terrain": "extraction_zone", "walkable": true, "cover": "none", "blocksSight": false, "lootType": "none", "extractionPoint": true, "spawnPoint": false },
+
+    { "q": 1, "r": -3, "terrain": "road", "walkable": true, "cover": "none", "blocksSight": false, "lootType": "none", "extractionPoint": false, "spawnPoint": false },
+    { "q": 1, "r": -2, "terrain": "wall", "walkable": false, "cover": "hard", "blocksSight": true, "lootType": "none", "extractionPoint": false, "spawnPoint": false },
+    { "q": 1, "r": -1, "terrain": "road", "walkable": true, "cover": "none", "blocksSight": false, "lootType": "none", "extractionPoint": false, "spawnPoint": false },
+    { "q": 1, "r": 0, "terrain": "loot_zone_normal", "walkable": true, "cover": "light", "blocksSight": false, "lootType": "normal", "extractionPoint": false, "spawnPoint": false },
+    { "q": 1, "r": 1, "terrain": "building", "walkable": true, "cover": "hard", "blocksSight": true, "lootType": "none", "extractionPoint": false, "spawnPoint": false },
+    { "q": 1, "r": 2, "terrain": "road", "walkable": true, "cover": "none", "blocksSight": false, "lootType": "none", "extractionPoint": false, "spawnPoint": false },
+
+    { "q": 2, "r": -3, "terrain": "bush", "walkable": true, "cover": "light", "blocksSight": false, "lootType": "none", "extractionPoint": false, "spawnPoint": false },
+    { "q": 2, "r": -2, "terrain": "road", "walkable": true, "cover": "none", "blocksSight": false, "lootType": "none", "extractionPoint": false, "spawnPoint": false },
+    { "q": 2, "r": -1, "terrain": "wrecked_car", "walkable": true, "cover": "hard", "blocksSight": false, "lootType": "none", "extractionPoint": false, "spawnPoint": false },
+    { "q": 2, "r": 0, "terrain": "loot_zone_rare", "walkable": true, "cover": "hard", "blocksSight": true, "lootType": "rare", "extractionPoint": false, "spawnPoint": false },
+    { "q": 2, "r": 1, "terrain": "road", "walkable": true, "cover": "none", "blocksSight": false, "lootType": "none", "extractionPoint": false, "spawnPoint": false },
+
+    { "q": 3, "r": -3, "terrain": "road", "walkable": true, "cover": "none", "blocksSight": false, "lootType": "none", "extractionPoint": false, "spawnPoint": false },
+    { "q": 3, "r": -2, "terrain": "road", "walkable": true, "cover": "none", "blocksSight": false, "lootType": "none", "extractionPoint": false, "spawnPoint": true },
+    { "q": 3, "r": -1, "terrain": "bush", "walkable": true, "cover": "light", "blocksSight": false, "lootType": "none", "extractionPoint": false, "spawnPoint": false },
+    { "q": 3, "r": 0, "terrain": "extraction_zone", "walkable": true, "cover": "none", "blocksSight": false, "lootType": "none", "extractionPoint": true, "spawnPoint": false }
+  ]
+}

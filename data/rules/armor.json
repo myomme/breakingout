@@ -1,0 +1,26 @@
+{
+  "lightSet": {
+    "name": "경무장 세트",
+    "durability": 3,
+    "protection": {
+      "head": 2,
+      "chest": 2,
+      "abdomen": 0,
+      "legs": 0
+    },
+    "staminaBonusPerTurn": 1,
+    "maxMoveActionsPerTurn": null
+  },
+  "heavySet": {
+    "name": "중무장 세트",
+    "durability": 5,
+    "protection": {
+      "head": 4,
+      "chest": 4,
+      "abdomen": 2,
+      "legs": 0
+    },
+    "staminaBonusPerTurn": 0,
+    "maxMoveActionsPerTurn": 3
+  }
+}

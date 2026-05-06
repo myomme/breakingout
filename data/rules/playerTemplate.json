@@ -1,0 +1,14 @@
+{
+  "stamina": {
+    "base": 4
+  },
+  "bodyHp": {
+    "head": 5,
+    "chest": 12,
+    "abdomen": 10,
+    "legs": 9
+  },
+  "bag": {
+    "slots": 6
+  }
+}

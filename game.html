@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Breaking Out Raid Prototype</title>
+    <link rel="stylesheet" href="./styles/game.css">
+  </head>
+  <body>
+    <div id="startOverlay" class="start-overlay">
+      <div class="start-overlay-backdrop"></div>
+      <div class="start-overlay-panel">
+        <p class="start-overlay-kicker">Breaking Out</p>
+        <h1>Raid Lobby</h1>
+
+        <section id="loginStep" class="lobby-step is-active" aria-label="Login">
+          <label class="start-option-field">
+            <span>Nickname</span>
+            <input id="nicknameInput" type="text" maxlength="18" placeholder="닉네임 입력" autocomplete="off" value="">
+          </label>
+          <button id="enterLobbyButton" type="button">로비 입장</button>
+        </section>
+
+        <section id="lobbyStep" class="lobby-step" aria-label="Lobby">
+          <div class="lobby-player-strip">
+            <span>접속자</span>
+            <strong id="lobbyNickname">-</strong>
+          </div>
+          <div class="lobby-actions">
+            <button id="createRoomButton" type="button">방 만들기</button>
+            <label class="start-option-field lobby-room-code-field">
+              <span>Room Code</span>
+              <input id="roomCodeInput" type="text" maxlength="6" placeholder="방 번호">
+            </label>
+            <button id="joinRoomButton" type="button">방 번호 입장</button>
+          </div>
+          <div class="room-list-header">
+            <h2>방 목록</h2>
+            <button id="refreshRoomsButton" type="button">새로고침</button>
+          </div>
+          <ul id="roomList" class="room-list"></ul>
+        </section>
+
+        <section id="roomStep" class="lobby-step" aria-label="Waiting Room">
+          <div class="room-header">
+            <div>
+              <span>Room</span>
+              <strong id="roomCodeLabel">------</strong>
+            </div>
+            <button id="leaveRoomButton" type="button">나가기</button>
+          </div>
+          <ul id="roomSlotList" class="room-slot-list"></ul>
+          <div class="lobby-test-actions">
+            <button id="addMockPlayerButton" type="button">테스트 플레이어 추가</button>
+            <button id="clearMockPlayersButton" type="button">테스트 인원 비우기</button>
+          </div>
+          <section class="room-map-card">
+            <div class="room-map-header">
+              <div>
+                <span>Map Package</span>
+                <strong id="roomMapName">Built-in test map</strong>
+              </div>
+              <span id="roomMapStatus">Ready</span>
+            </div>
+            <label class="file-button room-map-upload">
+              방장 맵 설정
+              <input id="roomMapImport" type="file" accept="application/json,.json">
+            </label>
+            <p id="roomMapMeta" class="room-map-meta">게임 시작 전에 모든 플레이어가 같은 맵 데이터를 자동으로 적용합니다.</p>
+          </section>
+          <p class="lobby-permission-note">내 장비만 변경할 수 있고, COM 설정과 게임 시작은 방장 권한입니다.</p>
+          <button id="startGameButton" type="button">게임 시작</button>
+        </section>
+
+        <p id="startOverlayStatus">닉네임을 입력하고 로비에 입장하세요.</p>
+      </div>
+    </div>
+
+    <main class="game-shell">
+      <section class="game-board-panel" aria-label="Game Board">
+        <header class="game-toolbar">
+          <div>
+            <h1>Raid Prototype</h1>
+            <p id="raidStatus">Load a map or use the built-in test map.</p>
+          </div>
+          <div class="toolbar-actions">
+            <label class="file-button">
+              Load Map
+              <input id="gameMapImport" type="file" accept="application/json,.json">
+            </label>
+            <button id="resetRaid" type="button">Reset Raid</button>
+          </div>
+        </header>
+
+        <canvas id="gameCanvas" class="game-canvas" aria-label="Playable raid map"></canvas>
+
+        <div class="raid-progress-hud" aria-label="Raid progress">
+          <div class="raid-progress-group">
+            <span id="raidProgressLabel" class="raid-progress-label">레이드 1</span>
+            <div id="raidProgressSegments" class="raid-progress-bar raid-progress-bar--raid"></div>
+          </div>
+          <div class="raid-progress-group">
+            <span id="phaseProgressLabel" class="raid-progress-label">페이즈 1</span>
+            <div id="phaseProgressSegments" class="raid-progress-bar raid-progress-bar--phase"></div>
+          </div>
+          <div class="turn-timer">
+            <strong id="turnTimerValue">:45</strong>
+            <span id="turnTimerLabel">Player Turn</span>
+          </div>
+        </div>
+
+        <div class="board-log-overlay" aria-live="polite">
+          <p id="actionLog" class="board-log-status">Ready</p>
+          <ul id="raidLog" class="board-log-list"></ul>
+        </div>
+
+        <div class="kill-log-overlay" aria-live="polite">
+          <p class="kill-log-title">Kill Log</p>
+          <ul id="killLog" class="kill-log-list"></ul>
+        </div>
+
+        <div id="opponentTurnOverlay" class="opponent-turn-overlay" hidden>
+          <p>Opponent is taking actions...</p>
+        </div>
+
+        <div class="board-tabs" role="tablist" aria-label="Board Menu">
+          <button id="tabEquipment" class="board-tab is-active" type="button" data-tab="equipment" role="tab" aria-selected="true">Equipment</button>
+          <button id="tabBag" class="board-tab" type="button" data-tab="bag" role="tab" aria-selected="false">Bag</button>
+          <button id="tabEvent" class="board-tab" type="button" data-tab="event" role="tab" aria-selected="false">Event</button>
+          <button id="tabOther" class="board-tab" type="button" data-tab="other" role="tab" aria-selected="false">Other</button>
+        </div>
+      </section>
+
+      <div id="tileActionPopup" class="tile-action-popup" hidden></div>
+
+      <div id="attackOverlay" class="attack-overlay" hidden>
+        <div class="attack-overlay-backdrop"></div>
+        <div class="attack-overlay-panel">
+          <p class="attack-overlay-label">Attack Dice</p>
+          <div id="attackDiceTray" class="attack-dice-tray" aria-live="polite"></div>
+        </div>
+      </div>
+
+      <div id="raidSummaryOverlay" class="raid-summary-overlay" hidden>
+        <div class="raid-summary-backdrop"></div>
+        <div class="raid-summary-panel" role="dialog" aria-modal="true" aria-labelledby="raidSummaryTitle">
+          <p id="raidSummaryCountdown" class="raid-summary-countdown">10 seconds until the next raid.</p>
+          <h2 id="raidSummaryTitle">Raid Summary</h2>
+          <dl id="raidSummaryStats" class="raid-summary-stats"></dl>
+          <div id="gameSummaryActions" class="game-summary-actions" hidden>
+            <button id="returnLobbyButton" type="button">메인으로</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="lootOverlay" class="loot-overlay" hidden>
+        <div class="loot-overlay-backdrop"></div>
+        <div class="loot-overlay-panel" role="dialog" aria-modal="true" aria-labelledby="lootRevealName">
+          <div id="lootRevealCard" class="loot-reveal-card">
+            <div class="loot-reveal-card-inner">
+              <img id="lootRevealImage" class="loot-reveal-image" alt="">
+              <span id="lootRevealTier" class="loot-reveal-tier">Normal Loot</span>
+              <strong id="lootRevealName" class="loot-reveal-name">Item</strong>
+              <span id="lootRevealValue" class="loot-reveal-value">Value 0</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="corpseLootOverlay" class="corpse-loot-overlay" hidden>
+        <div class="corpse-loot-backdrop"></div>
+        <section class="corpse-loot-panel" role="dialog" aria-modal="true" aria-labelledby="corpseLootTitle">
+          <header class="corpse-loot-header">
+            <div>
+              <h2 id="corpseLootTitle">Corpse Bag</h2>
+              <p id="corpseLootTimer">Time :45</p>
+            </div>
+            <button id="corpseLootClose" class="icon-button" type="button" aria-label="Close corpse bag">-</button>
+          </header>
+          <div class="corpse-loot-content">
+            <section class="corpse-loot-column">
+              <h3>Corpse Items</h3>
+              <ul id="corpseLootItems" class="corpse-loot-list"></ul>
+            </section>
+            <section class="corpse-loot-column">
+              <h3>Your Bag</h3>
+              <p id="corpseLootBagStatus" class="corpse-loot-status">0 / 0</p>
+              <ul id="corpseLootPlayerBag" class="corpse-loot-list"></ul>
+            </section>
+          </div>
+        </section>
+      </div>
+
+      <section id="loadoutPanel" class="loadout-panel is-minimized" aria-label="Player Equipment">
+        <header class="loadout-header">
+          <div>
+            <h2 id="loadoutTitle">Player Equipment</h2>
+            <p id="loadoutSubtitle">Weapon / Armor / Bag</p>
+          </div>
+          <button id="minimizeLoadout" class="icon-button" type="button" aria-label="Close equipment panel">-</button>
+        </header>
+
+        <div class="loadout-content">
+          <section class="loadout-section loadout-weapon-section">
+            <div class="loadout-section-title">
+              <h3>Weapon</h3>
+              <select id="weaponSelect"></select>
+            </div>
+            <article id="weaponCard" class="weapon-card">
+              <div class="weapon-card-top">
+                <strong id="weaponCardTitle">AR</strong>
+                <span id="weaponDiceBadge">3D</span>
+              </div>
+              <div class="weapon-art-placeholder" aria-hidden="true"></div>
+              <dl id="weaponCardStats" class="weapon-stat-grid"></dl>
+              <p id="weaponPassive" class="weapon-passive">-</p>
+            </article>
+          </section>
+
+          <section class="loadout-section loadout-armor-section">
+            <div class="loadout-section-title">
+              <h3>Armor</h3>
+              <select id="armorSelect"></select>
+            </div>
+            <dl class="stat-list loadout-stats">
+              <div>
+                <dt>Equipped</dt>
+                <dd id="playerArmor">-</dd>
+              </div>
+              <div>
+                <dt>Move Limit</dt>
+                <dd id="moveLimit">-</dd>
+              </div>
+            </dl>
+          </section>
+
+          <section class="loadout-section loadout-bag-section">
+            <div class="loadout-section-title">
+              <h3>Bag</h3>
+              <span id="bagSlotsLabel" class="loadout-count">0 / 0</span>
+            </div>
+            <ul id="bagList" class="bag-list inventory-bag"></ul>
+          </section>
+        </div>
+      </section>
+
+      <aside class="game-side-panel" aria-label="Raid Status">
+        <section class="panel-section">
+          <h2>Status</h2>
+          <dl class="stat-list">
+            <div>
+              <dt>Raid</dt>
+              <dd id="raidNumber">1 / 3</dd>
+            </div>
+            <div>
+              <dt>Phase</dt>
+              <dd id="phaseNumber">1 / 15</dd>
+            </div>
+            <div>
+              <dt>Active Player</dt>
+              <dd id="activePlayer">Player 1</dd>
+            </div>
+            <div>
+              <dt>Order</dt>
+              <dd id="turnOrder">-</dd>
+            </div>
+            <div>
+              <dt>Bonus</dt>
+              <dd id="turnBonus">-</dd>
+            </div>
+            <div>
+              <dt>Stamina</dt>
+              <dd id="staminaValue">4 / 4</dd>
+            </div>
+            <div>
+              <dt>Action</dt>
+              <dd id="actionState">Ready</dd>
+            </div>
+            <div>
+              <dt>Result</dt>
+              <dd id="raidResult">In Progress</dd>
+            </div>
+          </dl>
+          <div class="button-row">
+            <button id="endTurn" type="button">End Turn</button>
+            <button id="nextRaid" type="button">Next Raid</button>
+          </div>
+        </section>
+
+        <section class="panel-section">
+          <h2>Event</h2>
+          <dl class="stat-list">
+            <div>
+              <dt>Current Card</dt>
+              <dd id="currentEvent">None</dd>
+            </div>
+            <div>
+              <dt>Effect</dt>
+              <dd id="eventEffect">-</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section class="panel-section">
+          <h2>Player</h2>
+          <dl class="stat-list">
+            <div>
+              <dt>Position</dt>
+              <dd id="playerPosition">-</dd>
+            </div>
+            <div>
+              <dt>Bag Value</dt>
+              <dd id="bagValue">0</dd>
+            </div>
+            <div>
+              <dt>Total Value</dt>
+              <dd id="stashValue">0</dd>
+            </div>
+          </dl>
+          <label class="field">
+            <span>Move Mode</span>
+            <select id="moveMode">
+              <option value="walk">Walk / stamina 1 / 1 tile</option>
+              <option value="dash">Dash / stamina 2 / 3 tiles</option>
+            </select>
+          </label>
+          <button id="lootAction" type="button">Loot</button>
+          <button id="attackAction" type="button">Attack</button>
+        </section>
+
+        <section class="panel-section">
+          <h2>Attack Dice</h2>
+          <ul id="diceResults" class="dice-list"></ul>
+        </section>
+
+        <section class="panel-section">
+          <h2>Target HP</h2>
+          <ul id="targetHp" class="bag-list"></ul>
+        </section>
+
+        <section class="panel-section">
+          <h2>Armor</h2>
+          <dl class="stat-list">
+            <div>
+              <dt>Target</dt>
+              <dd id="targetArmor">-</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section class="panel-section">
+          <h2>Body HP</h2>
+          <div id="bodyHp" class="hp-list"></div>
+        </section>
+
+        <section class="panel-section">
+          <h2>Tile Details</h2>
+          <dl id="gameTileDetails" class="stat-list">
+            <div>
+              <dt>Status</dt>
+              <dd>No tile selected</dd>
+            </div>
+          </dl>
+        </section>
+      </aside>
+    </main>
+
+    <script type="module" src="./src/game/gamePrototype.js"></script>
+  </body>
+</html>

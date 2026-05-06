@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>브레이킹 아웃 전술 맵 에디터</title>
+    <link rel="stylesheet" href="./styles/main.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="board-panel" aria-label="육각 타일 맵 에디터">
+        <div class="board-toolbar">
+          <div>
+            <h1>전술 레이드 맵 에디터</h1>
+            <p id="mapStats">맵을 불러오는 중</p>
+          </div>
+          <div class="status-strip" aria-label="에디터 상태">
+            <span>휠: 줌</span>
+            <span>Space + 드래그: 이동</span>
+            <span>Alt: 스포이드</span>
+          </div>
+        </div>
+        <div id="board" class="board">
+          <canvas id="mapCanvas" class="map-canvas" aria-label="편집 가능한 전술 육각 맵"></canvas>
+        </div>
+      </section>
+
+      <aside class="side-panel" aria-label="맵 에디터 컨트롤">
+        <section class="panel-section">
+          <h2>그리드 생성</h2>
+          <div class="compact-grid">
+            <label class="field">
+              <span>열</span>
+              <input id="gridColumns" type="number" min="10" max="120" value="44">
+            </label>
+            <label class="field">
+              <span>행</span>
+              <input id="gridRows" type="number" min="10" max="120" value="28">
+            </label>
+          </div>
+          <button id="generateGrid" type="button">대형 그리드 생성</button>
+        </section>
+
+        <section class="panel-section">
+          <h2>브러시</h2>
+          <label class="field">
+            <span>종류</span>
+            <select id="brushSelect"></select>
+          </label>
+          <label class="field">
+            <span>스폰 슬롯</span>
+            <select id="spawnSlotSelect"></select>
+          </label>
+          <label class="field">
+            <span>반경</span>
+            <select id="brushSize">
+              <option value="0">반경 0</option>
+              <option value="1">반경 1</option>
+              <option value="2">반경 2</option>
+              <option value="3">반경 3</option>
+              <option value="5">반경 5</option>
+              <option value="8">반경 8</option>
+            </select>
+          </label>
+          <p id="brushStatus" class="hint">일반 지형</p>
+        </section>
+
+        <section class="panel-section">
+          <h2>그리드 정렬</h2>
+          <label class="field">
+            <span>Hex 크기</span>
+            <input id="hexSize" type="range" min="12" max="52" step="1" value="24">
+          </label>
+          <div class="compact-grid">
+            <label class="field">
+              <span>원점 X</span>
+              <input id="originX" type="number" step="5" value="0">
+            </label>
+            <label class="field">
+              <span>원점 Y</span>
+              <input id="originY" type="number" step="5" value="0">
+            </label>
+          </div>
+          <label class="field">
+            <span>회전</span>
+            <input id="gridRotation" type="range" min="-30" max="30" step="0.5" value="0">
+          </label>
+          <label class="field">
+            <span>그리드 불투명도</span>
+            <input id="gridOpacity" type="range" min="0.1" max="1" step="0.05" value="0.86">
+          </label>
+        </section>
+
+        <section class="panel-section">
+          <h2>배경 지도</h2>
+          <div class="button-row">
+            <label class="file-button">
+              이미지 업로드
+              <input id="backgroundImage" type="file" accept="image/*">
+            </label>
+            <button id="clearBackground" type="button">이미지 제거</button>
+          </div>
+          <label class="field">
+            <span>배율</span>
+            <input id="backgroundScale" type="range" min="0.1" max="3" step="0.02" value="1">
+          </label>
+          <label class="field">
+            <span>이미지 레이어</span>
+            <select id="backgroundLayer">
+              <option value="below">타일 아래</option>
+              <option value="same">타일과 동일</option>
+              <option value="above">타일 위</option>
+            </select>
+          </label>
+          <div class="compact-grid">
+            <label class="field">
+              <span>배경 X</span>
+              <input id="backgroundX" type="number" step="10" value="0">
+            </label>
+            <label class="field">
+              <span>배경 Y</span>
+              <input id="backgroundY" type="number" step="10" value="0">
+            </label>
+          </div>
+        </section>
+
+        <section class="panel-section">
+          <h2>네비게이터</h2>
+          <canvas id="minimap" class="minimap" aria-label="맵 네비게이터"></canvas>
+          <button id="homeView" type="button">전체 보기</button>
+        </section>
+
+        <section class="panel-section">
+          <h2>맵 데이터</h2>
+          <div class="button-row">
+            <button id="exportMap" type="button">에디터용 Export</button>
+            <button id="exportGameMap" type="button">게임용 Export</button>
+          </div>
+          <div class="button-row">
+            <label class="file-button">
+              Import
+              <input id="importMap" type="file" accept="application/json,.json">
+            </label>
+            <span></span>
+          </div>
+          <p class="hint">Ctrl+Z / Ctrl+Y, Shift 드래그 직선 칠하기</p>
+        </section>
+
+        <section class="panel-section">
+          <h2>선택 타일</h2>
+          <dl id="tileDetails" class="detail-list">
+            <div>
+              <dt>상태</dt>
+              <dd>선택된 타일 없음</dd>
+            </div>
+          </dl>
+        </section>
+      </aside>
+    </main>
+
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>

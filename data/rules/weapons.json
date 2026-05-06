@@ -1,0 +1,54 @@
+{
+  "AR": {
+    "name": "AR",
+    "label": "돌격소총",
+    "range": 4,
+    "attackDice": 3,
+    "damage": {
+      "head": 2,
+      "chest": 5,
+      "abdomen": 5,
+      "legs": 3
+    },
+    "passive": "moveOneAfterAttackIfStaminaRemains"
+  },
+  "SMG": {
+    "name": "SMG",
+    "label": "기관단총",
+    "range": 4,
+    "attackDice": 4,
+    "damage": {
+      "head": 2,
+      "chest": 3,
+      "abdomen": 4,
+      "legs": 6
+    },
+    "passive": "doubleHeadChestAbdomenAtRangeOneToTwo"
+  },
+  "SR": {
+    "name": "SR",
+    "label": "저격소총",
+    "range": 8,
+    "attackDice": 1,
+    "damage": {
+      "head": 8,
+      "chest": 9,
+      "abdomen": 7,
+      "legs": 2
+    },
+    "passive": "legsBecomeHeadAtRangeOneToFive"
+  },
+  "DMR": {
+    "name": "DMR",
+    "label": "지정사수소총",
+    "range": 7,
+    "attackDice": 2,
+    "damage": {
+      "head": 4,
+      "chest": 5,
+      "abdomen": 5,
+      "legs": 4
+    },
+    "passive": "bonusTwoChestResults"
+  }
+}

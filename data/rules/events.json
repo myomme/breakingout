@@ -1,0 +1,181 @@
+[
+  {
+    "id": "got_you",
+    "number": 1,
+    "name": "딱 잡았다, 요놈!",
+    "description": "스캐브에게 발각되었습니다. 플레이어가 파밍 지역에 위치하고 있을 경우 복부와 다리 HP가 감소합니다.",
+    "timing": "onReveal",
+    "effect": {
+      "type": "damageIfOnLootTile",
+      "arms": 2,
+      "legs": 2
+    }
+  },
+  {
+    "id": "rats",
+    "number": 2,
+    "name": "쥐같은 자식들!",
+    "description": "숨 죽인 채 숨어있던 정체 모를 플레이어에게 당했습니다. 하체와 복부 HP가 감소합니다.",
+    "timing": "onReveal",
+    "effect": {
+      "type": "damageBodyParts",
+      "abdomen": 5,
+      "legs": 5
+    }
+  },
+  {
+    "id": "bush_noise",
+    "number": 3,
+    "name": "덤불 속의 기척",
+    "description": "덤불 속에 있던 정체 모를 플레이어에게 당했습니다. 공격 주사위 결과 부위의 HP가 감소합니다.",
+    "timing": "onReveal",
+    "effect": {
+      "type": "rollBodyPartDamage",
+      "damage": 3
+    }
+  },
+  {
+    "id": "sprained_ankle",
+    "number": 4,
+    "name": "발목 삐끗",
+    "description": "움푹 패인 곳에 발을 헛디뎌 발목을 다칩니다. 이번 페이즈만 스태미나가 제한됩니다.",
+    "timing": "thisPhase",
+    "effect": {
+      "type": "limitStaminaThisPhase",
+      "value": 2
+    }
+  },
+  {
+    "id": "bag_open",
+    "number": 5,
+    "name": "야, 니 가방 열려 있다",
+    "description": "가방을 제대로 닫지 않아서 루팅한 아이템을 흘렸습니다. 가방 아이템 2개를 선택해 버립니다.",
+    "timing": "onReveal",
+    "effect": {
+      "type": "discardBagItem",
+      "count": 2
+    }
+  },
+  {
+    "id": "run_to_live",
+    "number": 6,
+    "name": "살려면 달려!",
+    "description": "스태미나가 0일 때 상체 HP를 소모해 즉시 이동할 수 있습니다.",
+    "timing": "thisPhase",
+    "effect": {
+      "type": "hpMoveWhenExhausted",
+      "maxDistance": 5,
+      "bodyPart": "chest"
+    }
+  },
+  {
+    "id": "taxi_home",
+    "number": 7,
+    "name": "집까지 가 주세요",
+    "description": "택시 탑승권을 획득했습니다. 비상 탈출구에 도달하면 즉시 탈출할 수 있습니다.",
+    "timing": "held",
+    "effect": {
+      "type": "gainTaxiTicket"
+    }
+  },
+  {
+    "id": "my_precious",
+    "number": 8,
+    "name": "마이 프레셔스",
+    "description": "근처 사물 위에 올려져 있는 값진 아이템을 발견합니다. 즉시 고급 루팅 아이템 하나를 획득합니다.",
+    "timing": "onReveal",
+    "effect": {
+      "type": "drawLoot",
+      "lootType": "rare",
+      "count": 1
+    }
+  },
+  {
+    "id": "shaky_aim",
+    "number": 9,
+    "name": "흔들리는 샷발 속에서",
+    "description": "이번 페이즈 동안 공격 시 모든 부위의 공격 데미지가 1 감소합니다.",
+    "timing": "thisPhase",
+    "effect": {
+      "type": "modifyAttackDamage",
+      "value": -1
+    }
+  },
+  {
+    "id": "stealthy",
+    "number": 10,
+    "name": "은밀하게 위대하게",
+    "description": "해당 턴 동안 모든 플레이어에게 공격을 받지 않습니다.",
+    "timing": "thisPhase",
+    "effect": {
+      "type": "cannotBeAttackTarget"
+    }
+  },
+  {
+    "id": "self_revive",
+    "number": 11,
+    "name": "아직 세상은 살 만하다",
+    "description": "자가 소생 키트를 획득했습니다. 사망 판정이 확정될 경우 모든 HP를 회복하고 카드가 소멸합니다.",
+    "timing": "held",
+    "effect": {
+      "type": "gainSelfRevive"
+    }
+  },
+  {
+    "id": "need_healing",
+    "number": 12,
+    "name": "힐링이 필요해",
+    "description": "체력 회복 주사기를 획득했습니다. 즉시 모든 부위를 최대 체력으로 회복합니다.",
+    "timing": "onReveal",
+    "effect": {
+      "type": "healAllBodyParts"
+    }
+  },
+  {
+    "id": "no_breath",
+    "number": 13,
+    "name": "숨이 하나도 안 차",
+    "description": "다음 이벤트 페이즈 전까지 대시 이동이 스태미나 2당 4칸으로 강화됩니다.",
+    "timing": "untilNextEvent",
+    "effect": {
+      "type": "dashUpgradeUntilNextEvent",
+      "staminaCost": 2,
+      "range": 4
+    }
+  },
+  {
+    "id": "high_zoom",
+    "number": 14,
+    "name": "모공까지 보여",
+    "description": "스코프를 획득했습니다. AR/DMR/SR 장착 시 레이드 종료까지 사거리가 증가합니다.",
+    "timing": "untilRaidEnd",
+    "effect": {
+      "type": "rangeBonusUntilRaidEnd",
+      "weaponIds": ["AR", "DMR", "SR"],
+      "rangeBonus": 6
+    }
+  },
+  {
+    "id": "drum_mag",
+    "number": 15,
+    "name": "얼마나 더 쏴야 해",
+    "description": "드럼 탄창을 획득했습니다. AR/SMG 장착 시 레이드 종료까지 공격 주사위가 1개 증가합니다.",
+    "timing": "untilRaidEnd",
+    "effect": {
+      "type": "diceBonusUntilRaidEnd",
+      "weaponIds": ["AR", "SMG"],
+      "diceBonus": 1
+    }
+  },
+  {
+    "id": "double_down",
+    "number": 16,
+    "name": "묻고 더블로 가",
+    "description": "아이템이 많은 상자를 발견했습니다. 이번 페이즈 동안 루팅 시 아이템을 2개 획득합니다.",
+    "timing": "thisPhase",
+    "effect": {
+      "type": "doubleLootThisPhase",
+      "count": 2
+    }
+  }
+]
