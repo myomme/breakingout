@@ -198,6 +198,11 @@ const loadoutDragState = {
   offsetX: 0,
   offsetY: 0
 };
+const playedVoiceCueKeys = new Set();
+let voiceStateInitialized = false;
+let lastVoiceRaid = null;
+let lastVoicePhase = null;
+let lastVoiceRaidEnded = null;
 
 const ORDER_CARD_IMAGES = Object.fromEntries(
   Array.from({ length: 8 }, (_, index) => {
@@ -238,6 +243,10 @@ const SOUND_URLS = {
   switchOff: new URL("../../assets/sfx/switchoff.mp3", import.meta.url).href,
   commonLoot: new URL("../../assets/sfx/common.mp3", import.meta.url).href,
   goldLoot: new URL("../../assets/sfx/gold.mp3", import.meta.url).href,
+  voRaidStart: new URL("../../assets/sfx/vo_raid_start.mp3", import.meta.url).href,
+  voRaidMid: new URL("../../assets/sfx/vo_raid_mid.mp3", import.meta.url).href,
+  voRaidEnd: new URL("../../assets/sfx/vo_raid_end.mp3", import.meta.url).href,
+  voGameEnd: new URL("../../assets/sfx/vo_game_end.mp3", import.meta.url).href,
   gameStart: new URL("../../assets/sfx/game%20start.mp3", import.meta.url).href,
   cardDraw: new URL("../../assets/sfx/card_draw.mp3", import.meta.url).href,
   cardFlick: new URL("../../assets/sfx/card_flick.mp3", import.meta.url).href
@@ -264,7 +273,11 @@ const SOUND_SETTINGS = {
   ticktock: 100,
   switchOff: 100,
   commonLoot: 100,
-  goldLoot: 100
+  goldLoot: 100,
+  voRaidStart: 100,
+  voRaidMid: 100,
+  voRaidEnd: 100,
+  voGameEnd: 100
 };
 
 const SOUND_SETTING_DEFS = [
@@ -288,7 +301,11 @@ const SOUND_SETTING_DEFS = [
   { key: "ticktock", label: "Countdown Tick" },
   { key: "switchOff", label: "Turn Switch" },
   { key: "commonLoot", label: "Common Loot" },
-  { key: "goldLoot", label: "Gold Loot" }
+  { key: "goldLoot", label: "Gold Loot" },
+  { key: "voRaidStart", label: "VO Raid Start" },
+  { key: "voRaidMid", label: "VO Raid Mid" },
+  { key: "voRaidEnd", label: "VO Raid End" },
+  { key: "voGameEnd", label: "VO Game End" }
 ];
 
 const SOUND_URL_TO_KEY = Object.fromEntries(
@@ -449,6 +466,7 @@ async function handleStartGame({ remoteStart = false } = {}) {
 
     if (currentMapData) {
       state = createRaidState(currentMapData);
+      resetGlobalVoiceTracking();
       clearPendingTileAction();
       renderer.replaceState(state);
       updateUi();
@@ -460,6 +478,7 @@ async function handleStartGame({ remoteStart = false } = {}) {
       startOverlay.hidden = true;
     }
     gameStarted = true;
+    startGlobalVoiceTracking({ playRaidStart: true });
 
     if (remoteStart) {
       actionLog.textContent = "방장 상태 동기화를 기다리는 중입니다.";
