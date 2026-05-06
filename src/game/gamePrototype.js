@@ -182,6 +182,7 @@ let gameServerConnected = false;
 let pendingServerSnapshotRoomId = null;
 let queuedRemoteGameSnapshot = null;
 const pendingRoomActions = new Map();
+let serverReconnectTimer = 0;
 let applyingRemoteSnapshot = false;
 let lastSnapshotVersion = 0;
 let remoteOrderRevealPlayedVersion = 0;
@@ -764,7 +765,7 @@ function bindLobbyEvents() {
       joinRoomByCode(roomCodeInput.value);
     }
   });
-  refreshRoomsButton?.addEventListener("click", renderRoomList);
+  refreshRoomsButton?.addEventListener("click", refreshRoomListFromServer);
   leaveRoomButton?.addEventListener("click", leaveRoom);
   addMockPlayerButton?.addEventListener("click", addMockPlayerToRoom);
   clearMockPlayersButton?.addEventListener("click", clearMockPlayersFromRoom);
@@ -1755,13 +1756,21 @@ function initServerSync() {
     return;
   }
 
+  if (gameServerSocket && [WebSocket.OPEN, WebSocket.CONNECTING].includes(gameServerSocket.readyState)) {
+    return;
+  }
+
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   const socket = new WebSocket(`${protocol}//${window.location.host}/ws`);
   gameServerSocket = socket;
 
   socket.addEventListener("open", () => {
     gameServerConnected = true;
-    sendServerMessage({ type: "getRooms", sourceId: lobbySession.localPlayerId });
+    if (serverReconnectTimer) {
+      window.clearTimeout(serverReconnectTimer);
+      serverReconnectTimer = 0;
+    }
+    requestServerRooms();
     if (lobbySession.currentRoom?.id) {
       requestServerGameSnapshot(lobbySession.currentRoom.id);
     }
@@ -1780,6 +1789,12 @@ function initServerSync() {
     gameServerConnected = false;
     pendingRoomActions.clear();
     setStartStatus("서버 연결이 끊겼습니다. 로컬 테스트 동기화만 사용합니다.");
+    if (!serverReconnectTimer) {
+      serverReconnectTimer = window.setTimeout(() => {
+        serverReconnectTimer = 0;
+        initServerSync();
+      }, 2500);
+    }
   });
 }
 
@@ -1832,6 +1847,23 @@ function sendServerMessage(message) {
 
   gameServerSocket.send(JSON.stringify(message));
   return true;
+}
+
+function requestServerRooms() {
+  if (!sendServerMessage({ type: "getRooms", sourceId: lobbySession.localPlayerId })) {
+    return false;
+  }
+  return true;
+}
+
+function refreshRoomListFromServer() {
+  if (requestServerRooms()) {
+    setStartStatus("서버 방 목록을 새로고침 중입니다.");
+    return;
+  }
+
+  renderRoomList();
+  setStartStatus("서버 연결 전이라 로컬 방 목록만 표시합니다.");
 }
 
 function sendRoomAction(action, payload = {}) {
@@ -2131,6 +2163,11 @@ function handleRoomStoreChanged(reason = "sync", syncedRooms = null) {
 
   if (reason === "broadcast" && activeRoom && !gameStarted) {
     setStartStatus("방 정보가 갱신되었습니다.");
+  }
+
+  if (["server", "serverSync"].includes(reason) && !activeRoom && !gameStarted) {
+    const waitingRooms = rooms.filter((room) => room.status === "waiting").length;
+    setStartStatus(`서버 방 목록 갱신 완료: 대기방 ${waitingRooms}개`);
   }
 }
 
