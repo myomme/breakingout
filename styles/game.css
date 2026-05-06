@@ -409,10 +409,10 @@ button.room-slot-ready {
 .game-shell {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 310px;
-  gap: 14px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
   height: 100vh;
-  padding: 14px;
+  padding: 0;
 }
 
 .game-board-panel,
@@ -423,17 +423,25 @@ button.room-slot-ready {
   box-shadow: var(--shadow);
 }
 
+.game-side-panel {
+  display: none;
+}
+
 .game-board-panel {
   position: relative;
   display: flex;
+  height: 100vh;
   min-width: 0;
   min-height: 0;
   flex-direction: column;
   overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .game-toolbar {
-  display: flex;
+  display: none;
   align-items: center;
   justify-content: space-between;
   gap: 14px;
@@ -510,7 +518,7 @@ select {
   display: block;
   width: 100%;
   height: 100%;
-  min-height: 520px;
+  min-height: 100vh;
   background: #ece7dc;
   cursor: pointer;
   touch-action: none;
@@ -519,12 +527,12 @@ select {
 
 .raid-progress-hud {
   position: absolute;
-  top: 78px;
+  top: max(8px, env(safe-area-inset-top));
   left: 50%;
   z-index: 11;
   display: grid;
-  width: min(580px, calc(100% - 520px));
-  min-width: 320px;
+  width: min(620px, calc(100% - 120px));
+  min-width: 240px;
   transform: translateX(-50%);
   gap: 5px;
   justify-items: center;
@@ -949,7 +957,7 @@ select {
 }
 
 .game-side-panel {
-  display: flex;
+  display: none;
   min-height: 0;
   flex-direction: column;
   gap: 14px;
@@ -1493,23 +1501,24 @@ dd {
 }
 
 .board-tabs {
-  position: absolute;
-  top: 78px;
-  right: 18px;
+  position: fixed;
+  top: max(12px, env(safe-area-inset-top));
+  right: max(10px, env(safe-area-inset-right));
   z-index: 12;
-  display: flex;
-  gap: 8px;
+  display: grid;
+  gap: 6px;
 }
 
 .board-tab {
   position: relative;
-  min-height: 38px;
+  width: 66px;
+  min-height: 40px;
   border-color: rgba(131, 143, 137, 0.26);
-  border-radius: 8px 8px 0 0;
-  border-bottom-color: rgba(131, 143, 137, 0.1);
+  border-radius: 8px;
   background: rgba(22, 26, 25, 0.9);
   color: rgba(226, 231, 222, 0.78);
-  padding: 0 16px;
+  padding: 0 6px;
+  font-size: 11px;
 }
 
 .board-tab.has-unread::after {
@@ -1535,11 +1544,11 @@ dd {
 .loadout-panel {
   position: fixed;
   top: 116px;
-  right: 338px;
+  right: 84px;
   left: auto;
   bottom: auto;
   z-index: 19;
-  width: min(720px, calc(100vw - 380px));
+  width: min(720px, calc(100vw - 112px));
   max-height: min(68vh, 700px);
   border: 1px solid rgba(118, 132, 124, 0.54);
   border-radius: 0 0 14px 14px;
@@ -2120,7 +2129,7 @@ dd {
   }
 
   .game-canvas {
-    height: calc(100dvh - 56px);
+    height: 100dvh;
     min-height: 0;
   }
 
@@ -2129,7 +2138,7 @@ dd {
   }
 
   .raid-progress-hud {
-    top: 62px;
+    top: max(6px, env(safe-area-inset-top));
     width: min(520px, calc(100vw - 108px));
     min-width: 190px;
   }
@@ -2174,7 +2183,7 @@ dd {
 
   .board-tabs {
     position: fixed;
-    top: 84px;
+    top: max(10px, env(safe-area-inset-top));
     right: max(8px, env(safe-area-inset-right));
     z-index: 22;
     display: grid;
