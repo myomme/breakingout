@@ -2427,6 +2427,180 @@ dd {
     overflow: hidden;
   }
 
+  .start-overlay {
+    place-items: stretch;
+    padding:
+      max(8px, env(safe-area-inset-top))
+      max(8px, env(safe-area-inset-right))
+      max(8px, env(safe-area-inset-bottom))
+      max(8px, env(safe-area-inset-left));
+  }
+
+  .start-overlay-panel {
+    width: 100%;
+    max-height: calc(100dvh - max(16px, env(safe-area-inset-top)) - max(16px, env(safe-area-inset-bottom)));
+    align-self: stretch;
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+    border-radius: 12px;
+    padding: 16px;
+  }
+
+  .start-overlay-panel h1 {
+    font-size: clamp(24px, 9vw, 34px);
+    line-height: 1.05;
+  }
+
+  .start-overlay-kicker {
+    margin-bottom: 4px;
+    font-size: 10px;
+  }
+
+  .lobby-step.is-active {
+    gap: 11px;
+  }
+
+  .lobby-player-strip,
+  .room-header,
+  .room-list-header {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .room-header,
+  .room-list-header {
+    align-items: initial;
+  }
+
+  .lobby-player-strip strong,
+  .room-header strong {
+    font-size: 18px;
+  }
+
+  .lobby-actions {
+    grid-template-columns: 1fr;
+    gap: 9px;
+  }
+
+  .lobby-actions > button,
+  .lobby-test-actions > button,
+  .room-header > button,
+  .room-list-header > button,
+  #enterLobbyButton,
+  #startGameButton {
+    width: 100%;
+    min-height: 42px;
+  }
+
+  .lobby-test-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .room-map-card {
+    gap: 9px;
+    padding: 10px;
+  }
+
+  .room-map-header {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .room-map-header > span {
+    justify-self: start;
+    width: fit-content;
+  }
+
+  .room-map-meta,
+  .lobby-permission-note,
+  #startOverlayStatus {
+    font-size: 11px;
+    line-height: 1.45;
+  }
+
+  .room-list,
+  .room-slot-list {
+    gap: 7px;
+  }
+
+  .room-list li {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .room-list li button {
+    width: 100%;
+    min-height: 38px;
+  }
+
+  .room-slot-row {
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      "main ready"
+      "type type"
+      "weapon armor";
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .room-slot-main {
+    grid-area: main;
+  }
+
+  .room-slot-type {
+    grid-area: type;
+  }
+
+  .room-slot-weapon {
+    grid-area: weapon;
+  }
+
+  .room-slot-armor {
+    grid-area: armor;
+  }
+
+  .room-slot-ready {
+    grid-area: ready;
+    justify-self: stretch;
+  }
+
+  .room-slot-type,
+  .room-slot-weapon,
+  .room-slot-armor,
+  .room-slot-ready {
+    width: 100%;
+    min-height: 36px;
+    font-size: 11px;
+  }
+
+  .session-chat--lobby {
+    border-radius: 8px;
+  }
+
+  .session-chat--lobby .session-chat-header {
+    padding: 9px 10px 0;
+  }
+
+  .session-chat--lobby .session-chat-messages {
+    min-height: 70px;
+    max-height: 132px;
+    padding: 0 10px;
+  }
+
+  .session-chat--lobby .session-chat-form {
+    grid-template-columns: minmax(0, 1fr) 56px;
+    padding: 0 10px 10px;
+  }
+
+  .session-chat--lobby .session-chat-form input,
+  .session-chat--lobby .session-chat-form button {
+    min-height: 34px;
+    font-size: 12px;
+  }
+
   .game-shell {
     grid-template-columns: 1fr;
     height: 100dvh;
@@ -2486,15 +2660,6 @@ dd {
   .board-log-status,
   .board-log-list li {
     font-size: 10px;
-  }
-
-  .session-chat--lobby {
-    border-radius: 8px;
-  }
-
-  .session-chat--lobby .session-chat-messages {
-    min-height: 72px;
-    max-height: 150px;
   }
 
   .session-chat--game {

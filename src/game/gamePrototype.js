@@ -471,6 +471,7 @@ async function loadJson(path) {
 
 function initStartOverlay() {
   restoreBeginnerHelpPreference();
+  normalizeLobbyCopy();
   if (!startGameButton) {
     bootstrap().catch((error) => {
       if (canvas) {
@@ -493,6 +494,59 @@ function initStartOverlay() {
     }
   });
   renderLobby();
+}
+
+function normalizeLobbyCopy() {
+  const textBySelector = new Map([
+    [".start-overlay-panel h1", "레이드 로비"],
+    ["#enterLobbyButton", "로비 입장"],
+    ["#createRoomButton", "방 만들기"],
+    ["#joinRoomButton", "방 번호 입장"],
+    [".room-list-header h2", "방 목록"],
+    ["#refreshRoomsButton", "새로고침"],
+    ["#leaveRoomButton", "나가기"],
+    ["#addMockPlayerButton", "테스트 플레이어 추가"],
+    ["#clearMockPlayersButton", "테스트 인원 비우기"],
+    ["#startGameButton", "게임 시작"],
+    ["#startOverlayStatus", "닉네임을 입력하고 로비에 입장하세요."]
+  ]);
+
+  textBySelector.forEach((text, selector) => {
+    const element = document.querySelector(selector);
+    if (element) {
+      element.textContent = text;
+    }
+  });
+
+  const nicknameLabel = document.querySelector("#loginStep .start-option-field span");
+  if (nicknameLabel) nicknameLabel.textContent = "닉네임";
+  if (nicknameInput) nicknameInput.placeholder = "닉네임 입력";
+
+  const roomCodeLabel = document.querySelector(".lobby-room-code-field span");
+  if (roomCodeLabel) roomCodeLabel.textContent = "방 번호";
+  if (roomCodeInput) roomCodeInput.placeholder = "방 번호";
+
+  const lobbyPlayerLabel = document.querySelector(".lobby-player-strip span");
+  if (lobbyPlayerLabel) lobbyPlayerLabel.textContent = "접속자";
+
+  const mapPackageLabel = document.querySelector(".room-map-header span");
+  if (mapPackageLabel) mapPackageLabel.textContent = "맵 패키지";
+
+  const mapUploadLabel = document.querySelector(".room-map-upload");
+  if (mapUploadLabel) {
+    const input = mapUploadLabel.querySelector("input");
+    mapUploadLabel.textContent = "방장 맵 설정";
+    if (input) mapUploadLabel.append(input);
+  }
+
+  if (roomMapMeta) {
+    roomMapMeta.textContent = "게임 시작 전에 모든 플레이어가 같은 맵 데이터를 자동으로 적용합니다.";
+  }
+
+  const permissionNote = document.querySelector(".lobby-permission-note");
+  if (permissionNote) {
+    permissionNote.textContent = "내 장비만 변경할 수 있고, COM 설정과 게임 시작은 방장 권한입니다.";
+  }
 }
 
 async function handleStartGame({ remoteStart = false } = {}) {
