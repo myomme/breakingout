@@ -2106,6 +2106,42 @@ dd {
   opacity: 0.42;
 }
 
+.beginner-context-hint {
+  position: fixed;
+  left: 50%;
+  bottom: 22px;
+  z-index: 18;
+  display: grid;
+  gap: 4px;
+  width: min(390px, calc(100vw - 260px));
+  transform: translateX(-50%);
+  border: 1px solid rgba(185, 232, 109, 0.24);
+  border-radius: 10px;
+  background: rgba(14, 19, 18, 0.78);
+  color: #eef2e8;
+  padding: 10px 12px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.24);
+  backdrop-filter: blur(8px);
+  pointer-events: none;
+}
+
+.beginner-context-hint[hidden] {
+  display: none;
+}
+
+.beginner-context-hint strong {
+  color: #b9e86d;
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+}
+
+.beginner-context-hint span {
+  color: rgba(238, 242, 232, 0.86);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .sound-settings-list {
   display: grid;
   gap: 8px;
@@ -2851,6 +2887,23 @@ dd {
   .beginner-help-actions {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .beginner-context-hint {
+    right: max(72px, calc(env(safe-area-inset-right) + 66px));
+    bottom: max(8px, env(safe-area-inset-bottom));
+    left: 8px;
+    width: auto;
+    transform: none;
+    padding: 8px 9px;
+  }
+
+  .beginner-context-hint strong {
+    font-size: 10px;
+  }
+
+  .beginner-context-hint span {
+    font-size: 11px;
   }
 }
 

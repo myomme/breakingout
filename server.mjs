@@ -209,7 +209,7 @@ function handleMessage(client, message) {
   }
 
   if (message.type === "chatMessage") {
-    handleChatMessage(message);
+    handleChatMessage(client, message);
     return;
   }
 
@@ -263,15 +263,24 @@ function handleMessage(client, message) {
   }
 }
 
-function handleChatMessage(message) {
+function handleChatMessage(client, message) {
   const room = findRoom(message.roomId);
-  if (!room) return;
+  if (!room) {
+    sendJson(client, { type: "chatRejected", sourceId: "server", roomId: message.roomId ?? null, message: "Room not found", at: Date.now() });
+    return;
+  }
 
   const slot = normalizeServerSlots(room.slots).find((entry) => entry.type === "player" && entry.playerId === message.sourceId);
-  if (!slot) return;
+  if (!slot) {
+    sendJson(client, { type: "chatRejected", sourceId: "server", roomId: room.id, message: "Player not in room", at: Date.now() });
+    return;
+  }
 
   const text = String(message.text ?? "").replace(/\s+/g, " ").trim().slice(0, 240);
-  if (!text) return;
+  if (!text) {
+    sendJson(client, { type: "chatRejected", sourceId: "server", roomId: room.id, message: "Empty message", at: Date.now() });
+    return;
+  }
 
   const chatMessage = {
     id: message.messageId ?? crypto.randomUUID(),

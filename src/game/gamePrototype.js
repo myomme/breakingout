@@ -169,6 +169,7 @@ let beginnerHelpClose = null;
 let beginnerHelpToggle = null;
 let beginnerHelpSwitch = null;
 let beginnerHelpSpotlight = null;
+let beginnerContextHint = null;
 let raidOrderOverlay = null;
 let raidOrderStage = null;
 let audioUnlocked = false;
@@ -2018,6 +2019,11 @@ function handleServerMessage(message) {
     return;
   }
 
+  if (message.type === "chatRejected") {
+    handleChatRejected(message);
+    return;
+  }
+
   if (message.type === "gameSnapshot") {
     handleRemoteGameSnapshot(message);
     return;
@@ -3378,6 +3384,14 @@ function ensureSessionChatUi() {
   }
 
   const boardPanel = document.querySelector(".game-board-panel");
+  if (boardPanel && !document.querySelector("#beginnerContextHint")) {
+    beginnerContextHint = document.createElement("aside");
+    beginnerContextHint.id = "beginnerContextHint";
+    beginnerContextHint.className = "beginner-context-hint";
+    beginnerContextHint.hidden = true;
+    boardPanel.append(beginnerContextHint);
+  }
+
   if (boardPanel && !document.querySelector("#gameChatPanel")) {
     const gameChat = document.createElement("section");
     gameChat.id = "gameChatPanel";
@@ -3412,6 +3426,7 @@ function ensureSessionChatUi() {
   gameChatMessages = document.querySelector("#gameChatMessages");
   gameChatForm = document.querySelector("#gameChatForm");
   gameChatInput = document.querySelector("#gameChatInput");
+  beginnerContextHint = document.querySelector("#beginnerContextHint");
 }
 
 function bindSessionChatEvents() {
@@ -3448,6 +3463,7 @@ function bindSessionChatEvents() {
 function sendChatFromInput(input) {
   const text = input?.value.trim();
   if (!text || !lobbySession.currentRoom?.id) {
+    setChatInputStatus(!text ? "메시지를 입력하세요." : "방에 입장한 뒤 채팅할 수 있습니다.");
     return;
   }
 
@@ -3464,8 +3480,9 @@ function sendChatFromInput(input) {
 
   if (ok) {
     input.value = "";
+    setChatInputStatus("전송 중...");
   } else {
-    setStartStatus("서버 연결 후 채팅을 사용할 수 있습니다.");
+    setChatInputStatus("서버 연결 후 채팅을 사용할 수 있습니다.");
   }
 }
 
@@ -3499,6 +3516,14 @@ function handleChatCleared(message) {
   clearLocalChatMessages();
 }
 
+function handleChatRejected(message) {
+  if (message.roomId && message.roomId !== lobbySession.currentRoom?.id) {
+    return;
+  }
+
+  setChatInputStatus(`채팅 실패: ${message.message ?? "서버에서 거절되었습니다."}`);
+}
+
 function clearLocalChatMessages() {
   chatMessages.length = 0;
   seenChatMessageIds.clear();
@@ -3520,6 +3545,10 @@ function addChatMessage(message, { unread = false } = {}) {
 
   if (unread) {
     unreadGameChatCount += 1;
+  }
+
+  if (message.playerId === lobbySession.localPlayerId) {
+    setChatInputStatus("전송 완료");
   }
 }
 
@@ -3563,6 +3592,14 @@ function renderChatBadge() {
 
   gameChatBadge.hidden = unreadGameChatCount <= 0;
   gameChatBadge.textContent = String(Math.min(unreadGameChatCount, 9));
+}
+
+function setChatInputStatus(message) {
+  if (gameStarted) {
+    actionLog.textContent = message;
+  } else {
+    setStartStatus(message);
+  }
 }
 
 function scrollChatToBottom(list) {
@@ -3665,6 +3702,95 @@ function maybeShowBeginnerHelpOnGameStart() {
 
   beginnerHelpShownThisGame = true;
   window.setTimeout(() => openBeginnerHelp(0), 650);
+}
+
+function renderBeginnerContextHint() {
+  ensureSessionChatUi();
+  if (!beginnerContextHint) {
+    return;
+  }
+
+  if (!gameStarted || !beginnerHelpEnabled || beginnerHelpOpen || state.raidEnded) {
+    beginnerContextHint.hidden = true;
+    return;
+  }
+
+  const hint = getBeginnerContextHint();
+  if (!hint) {
+    beginnerContextHint.hidden = true;
+    return;
+  }
+
+  beginnerContextHint.hidden = false;
+  beginnerContextHint.innerHTML = `
+    <strong>${hint.title}</strong>
+    <span>${hint.body}</span>
+  `;
+}
+
+function getBeginnerContextHint() {
+  const player = getUiPlayer();
+
+  if (!canLocalControlActivePlayer()) {
+    return {
+      title: "대기 중",
+      body: "다른 플레이어가 행동 중입니다. 내 차례가 오면 이동 가능 칸과 액션 버튼이 표시됩니다."
+    };
+  }
+
+  if (player.pendingDiscardCount > 0) {
+    return {
+      title: "가방 정리 필요",
+      body: "가방 탭에서 버릴 아이템을 선택해야 다음 행동을 진행할 수 있습니다."
+    };
+  }
+
+  if (state.postAttackMoveAvailable) {
+    return {
+      title: "AR 추가 이동",
+      body: "공격 후 남은 스태미나를 사용해 1칸 추가 이동할 수 있습니다. 이동할 칸을 선택하세요."
+    };
+  }
+
+  if (pendingTileAction?.type === "move") {
+    return {
+      title: "이동 확정",
+      body: "선택한 칸 위 비용 버튼을 누르거나 같은 칸을 한 번 더 누르면 이동합니다."
+    };
+  }
+
+  if (pendingTileAction?.type === "attack") {
+    return {
+      title: "공격 가능",
+      body: "대상 위 공격 버튼을 누르면 주사위를 굴리고, 공격 후 턴이 종료됩니다."
+    };
+  }
+
+  if (pendingTileAction?.type === "loot" || pendingTileAction?.type === "corpseLoot") {
+    return {
+      title: "루팅 가능",
+      body: "타일 위 루팅 버튼을 누르면 아이템을 획득합니다. 가방 공간을 확인하세요."
+    };
+  }
+
+  if (state.canLoot()) {
+    return {
+      title: "현재 위치 루팅",
+      body: "지금 밟고 있는 타일에서 루팅할 수 있습니다. 타일 위 루팅 버튼을 확인하세요."
+    };
+  }
+
+  if (player.stamina <= 0) {
+    return {
+      title: "행동 자원 없음",
+      body: "스태미나를 모두 사용했습니다. 가능한 특수 행동이 없다면 턴을 종료하세요."
+    };
+  }
+
+  return {
+    title: "내 차례",
+    body: "이동할 칸, 루팅 타일, 공격 대상을 선택하세요. 행동은 스태미나를 사용합니다."
+  };
 }
 
 function openBeginnerHelp(stepIndex = 0, { force = false } = {}) {
@@ -6345,6 +6471,7 @@ function updateUi({ skipSnapshotBroadcast = false } = {}) {
   syncBoardOverlays();
   syncGlobalVoiceOvers();
   refreshTabUnreadClasses();
+  renderBeginnerContextHint();
   if (beginnerHelpOpen) {
     positionBeginnerHelp();
   }
