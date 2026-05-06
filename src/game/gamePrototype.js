@@ -3360,6 +3360,20 @@ function closeDrawer() {
 
 function ensureSessionChatUi() {
   if (!roomStep || !document.querySelector("#lobbyChatMessages")) {
+    let roomMain = document.querySelector(".room-main-column");
+    let roomSide = document.querySelector(".room-side-column");
+    if (roomStep && !roomMain) {
+      roomMain = document.createElement("div");
+      roomMain.className = "room-main-column";
+      Array.from(roomStep.children).forEach((child) => roomMain.append(child));
+      roomStep.append(roomMain);
+    }
+    if (roomStep && !roomSide) {
+      roomSide = document.createElement("aside");
+      roomSide.className = "room-side-column";
+      roomStep.append(roomSide);
+    }
+
     const lobbyChat = document.createElement("section");
     lobbyChat.className = "session-chat session-chat--lobby";
     lobbyChat.setAttribute("aria-label", "Room Chat");
@@ -3374,12 +3388,12 @@ function ensureSessionChatUi() {
         <button type="submit">전송</button>
       </form>
     `;
-    if (roomStep) {
-      if (startGameButton?.parentElement === roomStep) {
-        roomStep.insertBefore(lobbyChat, startGameButton);
-      } else {
-        roomStep.append(lobbyChat);
-      }
+    if (roomSide) {
+      roomSide.append(lobbyChat);
+    } else if (roomMain) {
+      roomMain.insertBefore(lobbyChat, startGameButton);
+    } else if (roomStep) {
+      roomStep.append(lobbyChat);
     }
   }
 
