@@ -1608,6 +1608,7 @@ dd {
   z-index: 19;
   width: min(720px, calc(100vw - 112px));
   max-height: min(68vh, 700px);
+  overflow: auto;
   border: 1px solid rgba(118, 132, 124, 0.54);
   border-radius: 0 0 14px 14px;
   background:

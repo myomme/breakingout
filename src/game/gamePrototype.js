@@ -3111,6 +3111,7 @@ function toggleDrawer(tab) {
     playDrawerOpenSfx(tab);
     setDrawerTab(tab);
     loadoutPanel.classList.remove("is-minimized");
+    requestAnimationFrame(keepLoadoutPanelInViewport);
     return;
   }
 
@@ -3212,6 +3213,7 @@ function keepLoadoutPanelInViewport() {
     return;
   }
 
+  loadoutPanel.style.maxHeight = `${Math.max(280, window.innerHeight - 16)}px`;
   const rect = loadoutPanel.getBoundingClientRect();
   moveLoadoutPanel(rect.left, rect.top);
 }
