@@ -90,7 +90,13 @@ server.on("upgrade", (request, socket) => {
     "\r\n"
   ].join("\r\n"));
 
-  const client = { socket, id: crypto.randomUUID(), buffer: Buffer.alloc(0), alive: true };
+  const client = {
+    socket,
+    id: crypto.randomUUID(),
+    buffer: Buffer.alloc(0),
+    fragments: [],
+    alive: true
+  };
   clients.add(client);
   sendJson(client, { type: "roomsChanged", reason: "serverSync", sourceId: "server", rooms, at: Date.now() });
 
@@ -106,6 +112,7 @@ function parseFrames(client) {
   while (client.buffer.length >= 2) {
     const first = client.buffer[0];
     const second = client.buffer[1];
+    const finalFrame = Boolean(first & 0x80);
     const opcode = first & 0x0f;
     const masked = Boolean(second & 0x80);
     let length = second & 0x7f;
@@ -140,19 +147,43 @@ function parseFrames(client) {
       continue;
     }
 
-    if (opcode !== 0x1) continue;
-
     const data = Buffer.alloc(payload.length);
     for (let index = 0; index < payload.length; index += 1) {
       data[index] = mask ? payload[index] ^ mask[index % 4] : payload[index];
     }
 
+    if (opcode === 0x0) {
+      client.fragments.push(data);
+      if (!finalFrame) continue;
+      const completePayload = Buffer.concat(client.fragments);
+      client.fragments = [];
+      readClientJson(client, completePayload);
+      continue;
+    }
+
+    if (opcode !== 0x1) continue;
+
+    if (!finalFrame) {
+      client.fragments = [data];
+      continue;
+    }
+
+    const completePayload = client.fragments.length ? Buffer.concat([...client.fragments, data]) : data;
+    client.fragments = [];
+    readClientJson(client, completePayload);
+  }
+}
+
+function readClientJson(client, data) {
     try {
       handleMessage(client, JSON.parse(data.toString("utf8")));
-    } catch {
-      sendJson(client, { type: "serverError", message: "Malformed message" });
+    } catch (error) {
+      sendJson(client, {
+        type: "serverError",
+        message: "Malformed message",
+        detail: error.message
+      });
     }
-  }
 }
 
 function handleMessage(client, message) {
@@ -236,14 +267,10 @@ function handleRoomAction(client, message) {
     result = { ok: false, message: error.message || "Room action failed" };
   }
 
-  if (result?.ok) {
-    pruneRooms();
-    broadcastRooms(action);
-  }
-
   sendJson(client, {
     type: "roomActionResult",
     action,
+    actionId: message.actionId ?? null,
     ok: Boolean(result?.ok),
     message: result?.message ?? "",
     room: result?.room ?? null,
@@ -251,6 +278,11 @@ function handleRoomAction(client, message) {
     targetPlayerId: playerId,
     at: Date.now()
   });
+
+  if (result?.ok) {
+    pruneRooms();
+    broadcastRooms(action);
+  }
 }
 
 function broadcast(message) {
@@ -261,7 +293,11 @@ function broadcast(message) {
 
 function sendJson(client, data) {
   if (client.socket.destroyed) return;
-  sendFrame(client.socket, Buffer.from(JSON.stringify(data), "utf8"), 0x1);
+  try {
+    sendFrame(client.socket, Buffer.from(JSON.stringify(data), "utf8"), 0x1);
+  } catch {
+    clients.delete(client);
+  }
 }
 
 function sendFrame(socket, payload, opcode = 0x1) {

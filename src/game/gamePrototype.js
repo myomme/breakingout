@@ -180,6 +180,7 @@ let roomSyncChannel = null;
 let gameServerSocket = null;
 let gameServerConnected = false;
 let pendingServerSnapshotRoomId = null;
+const pendingRoomActions = new Map();
 let applyingRemoteSnapshot = false;
 let lastSnapshotVersion = 0;
 let remoteOrderRevealPlayedVersion = 0;
@@ -1776,6 +1777,7 @@ function initServerSync() {
 
   socket.addEventListener("close", () => {
     gameServerConnected = false;
+    pendingRoomActions.clear();
     setStartStatus("서버 연결이 끊겼습니다. 로컬 테스트 동기화만 사용합니다.");
   });
 }
@@ -1792,6 +1794,11 @@ function handleServerMessage(message) {
 
   if (message.type === "roomActionResult") {
     handleRoomActionResult(message);
+    return;
+  }
+
+  if (message.type === "serverError") {
+    setStartStatus(`서버 오류: ${message.message ?? "알 수 없는 오류"}`);
     return;
   }
 
@@ -1819,9 +1826,20 @@ function sendRoomAction(action, payload = {}) {
     return false;
   }
 
+  const actionId = `${lobbySession.localPlayerId}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  const timeout = window.setTimeout(() => {
+    if (!pendingRoomActions.has(actionId)) {
+      return;
+    }
+    pendingRoomActions.delete(actionId);
+    setStartStatus("서버 응답이 없습니다. 배포 서버가 최신 코드인지 확인한 뒤 다시 시도하세요.");
+  }, 8000);
+  pendingRoomActions.set(actionId, timeout);
+
   return sendServerMessage({
     type: "roomAction",
     action,
+    actionId,
     payload,
     sourceId: lobbySession.localPlayerId,
     at: Date.now()
@@ -1831,6 +1849,11 @@ function sendRoomAction(action, payload = {}) {
 function handleRoomActionResult(message) {
   if (message.targetPlayerId && message.targetPlayerId !== lobbySession.localPlayerId) {
     return;
+  }
+
+  if (message.actionId && pendingRoomActions.has(message.actionId)) {
+    window.clearTimeout(pendingRoomActions.get(message.actionId));
+    pendingRoomActions.delete(message.actionId);
   }
 
   if (!message.ok) {
