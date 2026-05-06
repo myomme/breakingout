@@ -17,6 +17,10 @@ export class GameRenderer {
     this.holdPan = false;
     this.panning = false;
     this.lastPointer = null;
+    this.touchPointers = new Map();
+    this.lastTouchDistance = 0;
+    this.lastTouchCenter = null;
+    this.suppressNextClick = false;
     this.effects = [];
     this.animationFrame = null;
     this.lastAnimationTime = 0;
@@ -49,27 +53,57 @@ export class GameRenderer {
     });
 
     this.canvas.addEventListener("pointerdown", (event) => {
+      if (event.pointerType === "touch") {
+        event.preventDefault();
+        this.touchPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+        this.canvas.setPointerCapture(event.pointerId);
+        this.updateTouchGestureState();
+        return;
+      }
+
       if (event.button !== 0 || !this.holdPan) return;
       this.panning = true;
       this.lastPointer = { x: event.clientX, y: event.clientY };
       this.canvas.setPointerCapture(event.pointerId);
-    });
+    }, { passive: false });
 
     this.canvas.addEventListener("pointermove", (event) => {
+      if (event.pointerType === "touch" && this.touchPointers.has(event.pointerId)) {
+        event.preventDefault();
+        this.handleTouchMove(event);
+        return;
+      }
+
       if (!this.panning || !this.lastPointer) return;
       this.camera.x += event.clientX - this.lastPointer.x;
       this.camera.y += event.clientY - this.lastPointer.y;
       this.lastPointer = { x: event.clientX, y: event.clientY };
       this.render();
+    }, { passive: false });
+
+    window.addEventListener("pointerup", (event) => {
+      if (event.pointerType === "touch") {
+        this.touchPointers.delete(event.pointerId);
+        this.updateTouchGestureState();
+      }
+      this.panning = false;
+      this.lastPointer = null;
     });
 
-    window.addEventListener("pointerup", () => {
+    window.addEventListener("pointercancel", (event) => {
+      if (event.pointerType === "touch") {
+        this.touchPointers.delete(event.pointerId);
+        this.updateTouchGestureState();
+      }
       this.panning = false;
       this.lastPointer = null;
     });
 
     this.canvas.addEventListener("click", (event) => {
-      if (this.holdPan) return;
+      if (this.holdPan || this.suppressNextClick) {
+        this.suppressNextClick = false;
+        return;
+      }
       const tile = this.getTileFromEvent(event);
 
       if (tile) {
@@ -88,6 +122,70 @@ export class GameRenderer {
       this.camera.y += (after.y - before.y) * this.camera.zoom;
       this.render();
     }, { passive: false });
+  }
+
+  handleTouchMove(event) {
+    const previous = this.touchPointers.get(event.pointerId);
+    this.touchPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    const pointers = Array.from(this.touchPointers.values());
+
+    if (pointers.length === 1) {
+      const current = pointers[0];
+      if (previous) {
+        const dx = current.x - previous.x;
+        const dy = current.y - previous.y;
+        if (Math.abs(dx) + Math.abs(dy) > 2) {
+          this.suppressNextClick = true;
+        }
+        this.camera.x += dx;
+        this.camera.y += dy;
+        this.render();
+      }
+      return;
+    }
+
+    if (pointers.length >= 2) {
+      const [first, second] = pointers;
+      const center = {
+        x: (first.x + second.x) / 2,
+        y: (first.y + second.y) / 2
+      };
+      const distance = Math.hypot(first.x - second.x, first.y - second.y);
+
+      if (this.lastTouchDistance > 0 && this.lastTouchCenter) {
+        const rect = this.canvas.getBoundingClientRect();
+        const screenCenter = { x: center.x - rect.left, y: center.y - rect.top };
+        const before = this.screenToWorld(screenCenter);
+        const zoomDelta = distance / Math.max(1, this.lastTouchDistance);
+        this.camera.zoom = clamp(this.camera.zoom * zoomDelta, 0.18, 4);
+        const after = this.screenToWorld(screenCenter);
+        this.camera.x += (after.x - before.x) * this.camera.zoom;
+        this.camera.y += (after.y - before.y) * this.camera.zoom;
+        this.camera.x += center.x - this.lastTouchCenter.x;
+        this.camera.y += center.y - this.lastTouchCenter.y;
+        this.suppressNextClick = true;
+        this.render();
+      }
+
+      this.lastTouchDistance = distance;
+      this.lastTouchCenter = center;
+    }
+  }
+
+  updateTouchGestureState() {
+    const pointers = Array.from(this.touchPointers.values());
+    if (pointers.length >= 2) {
+      const [first, second] = pointers;
+      this.lastTouchDistance = Math.hypot(first.x - second.x, first.y - second.y);
+      this.lastTouchCenter = {
+        x: (first.x + second.x) / 2,
+        y: (first.y + second.y) / 2
+      };
+      return;
+    }
+
+    this.lastTouchDistance = 0;
+    this.lastTouchCenter = pointers[0] ?? null;
   }
 
   resize() {

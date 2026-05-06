@@ -6073,7 +6073,7 @@ function renderRaidLog() {
   }
 
   raidLog.innerHTML = entries
-    .slice(0, 8)
+    .slice(0, 3)
     .map((entry) => `<li><span>${entry}</span></li>`)
     .join("");
 }
