@@ -11,9 +11,10 @@ export class GameRenderer {
     this.onMovementStep = onMovementStep;
     this.getViewerPlayerOverride = getViewerPlayer;
     this.camera = { x: 0, y: 0, zoom: 1 };
-    this.pixelRatio = window.devicePixelRatio || 1;
+    this.isMobileViewport = this.detectMobileViewport();
+    this.pixelRatio = this.getRenderPixelRatio();
     this.backgroundImage = null;
-    this.tileTextures = loadTileTextures(() => this.render());
+    this.tileTextures = loadTileTextures(() => this.requestRender());
     this.holdPan = false;
     this.panning = false;
     this.lastPointer = null;
@@ -21,9 +22,11 @@ export class GameRenderer {
     this.lastTouchDistance = 0;
     this.lastTouchCenter = null;
     this.suppressNextClick = false;
+    this.fastRenderUntil = 0;
     this.effects = [];
     this.animationFrame = null;
     this.lastAnimationTime = 0;
+    this.pendingRenderFrame = 0;
 
     this.bindEvents();
     this.resize();
@@ -33,8 +36,9 @@ export class GameRenderer {
 
   bindEvents() {
     window.addEventListener("resize", () => {
+      this.isMobileViewport = this.detectMobileViewport();
       this.resize();
-      this.render();
+      this.requestRender();
     });
 
     window.addEventListener("keydown", (event) => {
@@ -78,7 +82,8 @@ export class GameRenderer {
       this.camera.x += event.clientX - this.lastPointer.x;
       this.camera.y += event.clientY - this.lastPointer.y;
       this.lastPointer = { x: event.clientX, y: event.clientY };
-      this.render();
+      this.markFastRender();
+      this.requestRender();
     }, { passive: false });
 
     window.addEventListener("pointerup", (event) => {
@@ -120,8 +125,33 @@ export class GameRenderer {
       const after = this.screenToWorld(mouse);
       this.camera.x += (after.x - before.x) * this.camera.zoom;
       this.camera.y += (after.y - before.y) * this.camera.zoom;
-      this.render();
+      this.markFastRender();
+      this.requestRender();
     }, { passive: false });
+  }
+
+  detectMobileViewport() {
+    return window.matchMedia?.("(pointer: coarse), (max-width: 920px)")?.matches ?? window.innerWidth <= 920;
+  }
+
+  getRenderPixelRatio() {
+    const deviceRatio = window.devicePixelRatio || 1;
+    return this.isMobileViewport ? Math.min(deviceRatio, 1.25) : Math.min(deviceRatio, 2);
+  }
+
+  requestRender() {
+    if (this.pendingRenderFrame) {
+      return;
+    }
+
+    this.pendingRenderFrame = requestAnimationFrame(() => {
+      this.pendingRenderFrame = 0;
+      this.render();
+    });
+  }
+
+  markFastRender(duration = 180) {
+    this.fastRenderUntil = performance.now() + duration;
   }
 
   handleTouchMove(event) {
@@ -139,7 +169,8 @@ export class GameRenderer {
         }
         this.camera.x += dx;
         this.camera.y += dy;
-        this.render();
+        this.markFastRender();
+        this.requestRender();
       }
       return;
     }
@@ -164,7 +195,8 @@ export class GameRenderer {
         this.camera.x += center.x - this.lastTouchCenter.x;
         this.camera.y += center.y - this.lastTouchCenter.y;
         this.suppressNextClick = true;
-        this.render();
+        this.markFastRender();
+        this.requestRender();
       }
 
       this.lastTouchDistance = distance;
@@ -190,7 +222,7 @@ export class GameRenderer {
 
   resize() {
     const rect = this.canvas.getBoundingClientRect();
-    this.pixelRatio = window.devicePixelRatio || 1;
+    this.pixelRatio = this.getRenderPixelRatio();
     this.canvas.width = Math.max(1, Math.floor(rect.width * this.pixelRatio));
     this.canvas.height = Math.max(1, Math.floor(rect.height * this.pixelRatio));
     this.ctx.setTransform(this.pixelRatio, 0, 0, this.pixelRatio, 0, 0);
@@ -205,7 +237,7 @@ export class GameRenderer {
     const image = new Image();
     image.addEventListener("load", () => {
       this.backgroundImage = image;
-      this.render();
+      this.requestRender();
     });
     image.src = this.state.gameMap.backgroundImage;
   }
@@ -222,6 +254,10 @@ export class GameRenderer {
   }
 
   render() {
+    if (this.pendingRenderFrame) {
+      cancelAnimationFrame(this.pendingRenderFrame);
+      this.pendingRenderFrame = 0;
+    }
     const rect = this.canvas.getBoundingClientRect();
     this.ctx.clearRect(0, 0, rect.width, rect.height);
     this.ctx.fillStyle = "#ece7dc";
@@ -305,7 +341,7 @@ export class GameRenderer {
       this.ctx.closePath();
       this.ctx.fillStyle = isPlayerExtraction ? "#b9e86d" : terrain.color;
       this.ctx.fill();
-      if (!isPlayerExtraction) {
+      if (!isPlayerExtraction && !this.shouldUseFastRender()) {
         this.drawTileTextures(tile, corners);
       }
 
@@ -336,7 +372,7 @@ export class GameRenderer {
         this.drawMoveIndicator(center, corners);
       }
 
-      if (visible || isPlayerExtraction) {
+      if ((visible || isPlayerExtraction) && !(this.shouldUseFastRender() && !isPlayerExtraction)) {
         this.drawTacticalMarks(tile, center, isPlayerExtraction);
       }
     }
@@ -737,6 +773,10 @@ export class GameRenderer {
     this.ctx.restore();
   }
 
+  shouldUseFastRender() {
+    return this.isMobileViewport && performance.now() < this.fastRenderUntil;
+  }
+
   drawShotEffect(effect, progress) {
     const from = this.worldToScreen(this.hexToWorld(effect.from));
     const to = this.worldToScreen(this.hexToWorld(effect.to));
@@ -1079,7 +1119,7 @@ export class GameRenderer {
     this.effects = [];
     this.loadBackground();
     this.centerCamera();
-    this.render();
+    this.requestRender();
   }
 }
 
