@@ -1985,6 +1985,127 @@ dd {
   font-weight: 900;
 }
 
+.beginner-help-card {
+  min-height: 0;
+}
+
+.help-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid rgba(132, 147, 138, 0.18);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.045);
+  padding: 10px 12px;
+  color: rgba(238, 242, 232, 0.9);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.help-toggle-row input {
+  width: 18px;
+  height: 18px;
+  accent-color: #b9e86d;
+}
+
+.beginner-help-open {
+  min-height: 36px;
+  border-color: rgba(185, 232, 109, 0.38);
+  background: rgba(185, 232, 109, 0.13);
+  color: #eef8d0;
+  font-weight: 900;
+}
+
+.beginner-help-spotlight {
+  position: fixed;
+  z-index: 41;
+  border: 2px solid rgba(185, 232, 109, 0.92);
+  border-radius: 12px;
+  box-shadow:
+    0 0 0 9999px rgba(4, 6, 7, 0.38),
+    0 0 24px rgba(185, 232, 109, 0.32);
+  pointer-events: none;
+  transition: left 120ms ease, top 120ms ease, width 120ms ease, height 120ms ease;
+}
+
+.beginner-help-spotlight[hidden] {
+  display: none;
+}
+
+.beginner-help-panel {
+  position: fixed;
+  z-index: 42;
+  display: grid;
+  gap: 10px;
+  width: min(360px, calc(100vw - 24px));
+  border: 1px solid rgba(185, 232, 109, 0.28);
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, rgba(32, 39, 36, 0.98), rgba(11, 15, 14, 0.98));
+  color: #eef2e8;
+  padding: 14px;
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.42);
+  backdrop-filter: blur(10px);
+}
+
+.beginner-help-panel[hidden] {
+  display: none;
+}
+
+.beginner-help-kicker {
+  color: #b9e86d;
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.beginner-help-panel h2 {
+  color: #f5f8ec;
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.beginner-help-panel p {
+  color: rgba(232, 239, 226, 0.88);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.beginner-help-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid rgba(132, 147, 138, 0.18);
+  padding-top: 10px;
+}
+
+.beginner-help-footer span {
+  color: rgba(205, 216, 202, 0.74);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.beginner-help-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.beginner-help-actions button {
+  min-height: 32px;
+  border-color: rgba(159, 176, 163, 0.28);
+  background: rgba(255, 255, 255, 0.07);
+  color: #eef2e8;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.beginner-help-actions button:disabled {
+  opacity: 0.42;
+}
+
 .sound-settings-list {
   display: grid;
   gap: 8px;
@@ -2503,15 +2624,16 @@ dd {
     right: max(8px, env(safe-area-inset-right));
     z-index: 22;
     display: grid;
-    gap: 6px;
+    gap: clamp(4px, 0.8dvh, 6px);
+    max-height: calc(100dvh - max(20px, env(safe-area-inset-top)) - max(10px, env(safe-area-inset-bottom)));
   }
 
   .board-tab {
-    width: 64px;
-    min-height: 42px;
+    width: clamp(48px, 13vw, 62px);
+    min-height: clamp(34px, 8.6dvh, 42px);
     border-radius: 8px;
-    padding: 0 6px;
-    font-size: 11px;
+    padding: 0 4px;
+    font-size: clamp(10px, 2.6vw, 11px);
     writing-mode: horizontal-tb;
   }
 
@@ -2522,7 +2644,7 @@ dd {
 
   .loadout-panel {
     top: auto;
-    right: 82px;
+    right: clamp(64px, 17vw, 82px);
     left: 8px;
     bottom: max(8px, env(safe-area-inset-bottom));
     width: auto;
@@ -2541,5 +2663,45 @@ dd {
 
   .inventory-bag {
     grid-template-columns: repeat(4, 38px);
+  }
+
+  .beginner-help-panel {
+    width: min(330px, calc(100vw - 18px));
+    padding: 12px;
+  }
+
+  .beginner-help-panel h2 {
+    font-size: 16px;
+  }
+
+  .beginner-help-panel p {
+    font-size: 12px;
+  }
+
+  .beginner-help-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .beginner-help-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 420px), (max-height: 620px) {
+  .board-tabs {
+    gap: 4px;
+  }
+
+  .board-tab {
+    width: clamp(44px, 12vw, 54px);
+    min-height: clamp(31px, 7.4dvh, 38px);
+    border-radius: 7px;
+    font-size: 10px;
+  }
+
+  .loadout-panel {
+    right: clamp(56px, 15vw, 70px);
   }
 }

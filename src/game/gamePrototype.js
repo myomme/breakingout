@@ -159,6 +159,16 @@ let soundSettingsList = null;
 let simulationRunCount = null;
 let simulationRunButton = null;
 let simulationOutput = null;
+let beginnerHelpPanel = null;
+let beginnerHelpTitle = null;
+let beginnerHelpBody = null;
+let beginnerHelpProgress = null;
+let beginnerHelpPrev = null;
+let beginnerHelpNext = null;
+let beginnerHelpClose = null;
+let beginnerHelpToggle = null;
+let beginnerHelpSwitch = null;
+let beginnerHelpSpotlight = null;
 let raidOrderOverlay = null;
 let raidOrderStage = null;
 let audioUnlocked = false;
@@ -184,6 +194,7 @@ const SESSION_ROOM_ID_KEY = "breakingOutPrototypeSessionRoomId";
 const ROOM_SYNC_CHANNEL = "breakingOutPrototypeRoomSync";
 const GAME_STATE_STORAGE_PREFIX = "breakingOutPrototypeGameState:";
 const PLAYER_COMMAND_STORAGE_PREFIX = "breakingOutPrototypePlayerCommand:";
+const BEGINNER_HELP_STORAGE_KEY = "breakingOutPrototypeBeginnerHelp";
 const DEFAULT_MAP_PATH = "./data/maps/map_Farm.json";
 const DEFAULT_MAP_NAME = "Farm Raid Map";
 const PRESENCE_HEARTBEAT_MS = 4000;
@@ -207,6 +218,52 @@ const chatMessages = [];
 const seenChatMessageIds = new Set();
 let unreadGameChatCount = 0;
 const clearedChatRoomIds = new Set();
+let beginnerHelpEnabled = true;
+let beginnerHelpOpen = false;
+let beginnerHelpStepIndex = 0;
+let beginnerHelpShownThisGame = false;
+const BEGINNER_HELP_STEPS = [
+  {
+    selector: ".raid-progress-hud",
+    title: "레이드와 페이즈",
+    body: "총 3번의 레이드를 진행합니다. 각 레이드는 15페이즈이며, 제한 안에 탈출해야 이번 레이드의 아이템 가치가 보존됩니다."
+  },
+  {
+    selector: "#turnTimerValue",
+    title: "턴 제한 시간",
+    body: "내 차례에는 최대 45초가 주어집니다. 시간이 끝나면 자동으로 턴이 넘어가니 이동, 루팅, 공격 중 우선순위를 빠르게 정하세요."
+  },
+  {
+    selector: ".game-canvas",
+    title: "맵 조작",
+    body: "PC는 휠로 확대/축소하고 드래그로 화면을 이동합니다. 모바일은 손가락 드래그와 핀치 확대를 사용합니다."
+  },
+  {
+    selector: "#tileActionPopup",
+    title: "타일 위 액션",
+    body: "이동 가능한 칸을 누르면 필요한 비용이 뜹니다. 같은 칸을 한 번 더 누르면 이동이 확정되고, 루팅/공격도 대상 바로 위 버튼으로 실행합니다."
+  },
+  {
+    selector: "#bodyHpHud",
+    title: "부위별 HP",
+    body: "머리나 상체가 0이 되면 사망합니다. 복부나 하체가 0인 상태에서 추가 피해를 받으면 상체 피해로 전환됩니다."
+  },
+  {
+    selector: ".board-tabs",
+    title: "장비, 가방, 이벤트",
+    body: "오른쪽 탭에서 현재 장비, 가방 아이템, 이벤트 카드를 확인합니다. 빨간 점은 새로 확인할 내용이 있다는 표시입니다."
+  },
+  {
+    selector: "#gameChatPanel",
+    title: "작전 채팅",
+    body: "채팅은 현재 방 세션에서만 유지됩니다. 게임이 끝나거나 방이 사라지면 대화 기록도 함께 삭제됩니다."
+  },
+  {
+    selector: ".kill-log-overlay",
+    title: "로그와 시야 정보",
+    body: "킬로그와 행동 로그는 중요한 전투 결과와 내 플레이에 관련된 정보를 알려줍니다. 시야 밖 정보는 일부러 숨겨질 수 있습니다."
+  }
+];
 const loadoutDragState = {
   dragging: false,
   pointerId: null,
@@ -413,6 +470,7 @@ async function loadJson(path) {
 }
 
 function initStartOverlay() {
+  restoreBeginnerHelpPreference();
   if (!startGameButton) {
     bootstrap().catch((error) => {
       if (canvas) {
@@ -499,6 +557,7 @@ async function handleStartGame({ remoteStart = false } = {}) {
       actionLog.textContent = "방장 상태 동기화를 기다리는 중입니다.";
       renderer.render();
       updateUi({ skipSnapshotBroadcast: true });
+      maybeShowBeginnerHelpOnGameStart();
       gameStarting = false;
       return;
     }
@@ -508,6 +567,7 @@ async function handleStartGame({ remoteStart = false } = {}) {
     await wait(160);
     await playRaidOrderReveal();
     broadcastGameSnapshot("gameStart");
+    maybeShowBeginnerHelpOnGameStart();
     queueAiTurn();
     if (comPlayerCount) {
       comPlayerCount.disabled = true;
@@ -572,6 +632,7 @@ async function bootstrap() {
   bindAudioUnlock();
   bindEvents();
   initTopDrawerUi();
+  ensureBeginnerHelpUi();
   updateUi();
   renderer.render();
   gameBootstrapped = true;
@@ -3071,6 +3132,18 @@ function setupDrawerPanes() {
   otherPane.dataset.pane = "other";
   otherPane.innerHTML = `
     <div class="drawer-pane-content">
+      <section class="drawer-card beginner-help-card">
+        <div class="loadout-section-title">
+          <h3>초보자 도움말</h3>
+          <span class="loadout-count">Guide</span>
+        </div>
+        <p class="weapon-passive">처음 플레이할 때 필요한 설명을 화면 위에 단계별로 표시합니다.</p>
+        <label class="help-toggle-row">
+          <span>도움말 자동 표시</span>
+          <input id="beginnerHelpSwitch" type="checkbox">
+        </label>
+        <button id="beginnerHelpToggle" class="beginner-help-open" type="button">도움말 다시 보기</button>
+      </section>
       <section class="drawer-card">
         <div class="loadout-section-title">
           <h3>System Audio</h3>
@@ -3107,6 +3180,8 @@ function setupDrawerPanes() {
   eventHoldList = document.querySelector("#eventHoldList");
   eventDebugSelect = document.querySelector("#eventDebugSelect");
   eventDebugRun = document.querySelector("#eventDebugRun");
+  beginnerHelpToggle = document.querySelector("#beginnerHelpToggle");
+  beginnerHelpSwitch = document.querySelector("#beginnerHelpSwitch");
   soundSettingsList = document.querySelector("#soundSettingsList");
   simulationRunCount = document.querySelector("#simulationRunCount");
   simulationRunButton = document.querySelector("#simulationRunButton");
@@ -3140,6 +3215,7 @@ function setupDrawerPanes() {
   renderSoundSettings();
   bindSoundSettings();
   bindSimulationControls();
+  bindBeginnerHelpControls();
 }
 
 function setDrawerTab(tab) {
@@ -3158,8 +3234,8 @@ function setDrawerTab(tab) {
     loadoutTitle.textContent = "Event";
     loadoutSubtitle.textContent = "Review the current event and held cards";
   } else {
-    loadoutTitle.textContent = "System";
-    loadoutSubtitle.textContent = "Adjust live sound levels";
+    loadoutTitle.textContent = "기타";
+    loadoutSubtitle.textContent = "도움말, 사운드, 테스트 설정";
   }
 
   loadoutPanel.querySelectorAll(".drawer-pane").forEach((pane) => {
@@ -3443,6 +3519,179 @@ function scrollChatToBottom(list) {
   requestAnimationFrame(() => {
     list.scrollTop = list.scrollHeight;
   });
+}
+
+function restoreBeginnerHelpPreference() {
+  const saved = readJsonStorage(BEGINNER_HELP_STORAGE_KEY, null);
+  beginnerHelpEnabled = saved?.enabled !== false;
+}
+
+function saveBeginnerHelpPreference() {
+  writeJsonStorage(BEGINNER_HELP_STORAGE_KEY, { enabled: beginnerHelpEnabled });
+}
+
+function ensureBeginnerHelpUi() {
+  if (beginnerHelpPanel) {
+    return;
+  }
+
+  beginnerHelpSpotlight = document.createElement("div");
+  beginnerHelpSpotlight.className = "beginner-help-spotlight";
+  beginnerHelpSpotlight.hidden = true;
+  document.body.append(beginnerHelpSpotlight);
+
+  beginnerHelpPanel = document.createElement("section");
+  beginnerHelpPanel.className = "beginner-help-panel";
+  beginnerHelpPanel.hidden = true;
+  beginnerHelpPanel.setAttribute("role", "dialog");
+  beginnerHelpPanel.setAttribute("aria-live", "polite");
+  beginnerHelpPanel.innerHTML = `
+    <div class="beginner-help-kicker">초보자 도움말</div>
+    <h2 id="beginnerHelpTitle">도움말</h2>
+    <p id="beginnerHelpBody">-</p>
+    <div class="beginner-help-footer">
+      <span id="beginnerHelpProgress">1 / 1</span>
+      <div class="beginner-help-actions">
+        <button id="beginnerHelpPrev" type="button">이전</button>
+        <button id="beginnerHelpNext" type="button">다음</button>
+        <button id="beginnerHelpClose" type="button">닫기</button>
+      </div>
+    </div>
+  `;
+  document.body.append(beginnerHelpPanel);
+
+  beginnerHelpTitle = beginnerHelpPanel.querySelector("#beginnerHelpTitle");
+  beginnerHelpBody = beginnerHelpPanel.querySelector("#beginnerHelpBody");
+  beginnerHelpProgress = beginnerHelpPanel.querySelector("#beginnerHelpProgress");
+  beginnerHelpPrev = beginnerHelpPanel.querySelector("#beginnerHelpPrev");
+  beginnerHelpNext = beginnerHelpPanel.querySelector("#beginnerHelpNext");
+  beginnerHelpClose = beginnerHelpPanel.querySelector("#beginnerHelpClose");
+
+  beginnerHelpPrev?.addEventListener("click", () => showBeginnerHelpStep(beginnerHelpStepIndex - 1));
+  beginnerHelpNext?.addEventListener("click", () => {
+    if (beginnerHelpStepIndex >= BEGINNER_HELP_STEPS.length - 1) {
+      closeBeginnerHelp();
+      return;
+    }
+    showBeginnerHelpStep(beginnerHelpStepIndex + 1);
+  });
+  beginnerHelpClose?.addEventListener("click", closeBeginnerHelp);
+  window.addEventListener("resize", () => {
+    if (beginnerHelpOpen) {
+      positionBeginnerHelp();
+    }
+  });
+}
+
+function bindBeginnerHelpControls() {
+  if (beginnerHelpSwitch) {
+    beginnerHelpSwitch.checked = beginnerHelpEnabled;
+    if (beginnerHelpSwitch.dataset.bound !== "true") {
+      beginnerHelpSwitch.addEventListener("change", () => {
+        beginnerHelpEnabled = beginnerHelpSwitch.checked;
+        saveBeginnerHelpPreference();
+        if (!beginnerHelpEnabled) {
+          closeBeginnerHelp();
+        }
+      });
+      beginnerHelpSwitch.dataset.bound = "true";
+    }
+  }
+
+  if (beginnerHelpToggle && beginnerHelpToggle.dataset.bound !== "true") {
+    beginnerHelpToggle.addEventListener("click", () => openBeginnerHelp(0, { force: true }));
+    beginnerHelpToggle.dataset.bound = "true";
+  }
+}
+
+function maybeShowBeginnerHelpOnGameStart() {
+  if (!beginnerHelpEnabled || beginnerHelpShownThisGame) {
+    return;
+  }
+
+  beginnerHelpShownThisGame = true;
+  window.setTimeout(() => openBeginnerHelp(0), 650);
+}
+
+function openBeginnerHelp(stepIndex = 0, { force = false } = {}) {
+  ensureBeginnerHelpUi();
+  if (!force && !beginnerHelpEnabled) {
+    return;
+  }
+
+  beginnerHelpOpen = true;
+  beginnerHelpPanel.hidden = false;
+  beginnerHelpSpotlight.hidden = false;
+  showBeginnerHelpStep(stepIndex);
+}
+
+function closeBeginnerHelp() {
+  beginnerHelpOpen = false;
+  if (beginnerHelpPanel) {
+    beginnerHelpPanel.hidden = true;
+  }
+  if (beginnerHelpSpotlight) {
+    beginnerHelpSpotlight.hidden = true;
+  }
+}
+
+function showBeginnerHelpStep(index) {
+  if (!beginnerHelpPanel) {
+    return;
+  }
+
+  beginnerHelpStepIndex = Math.max(0, Math.min(BEGINNER_HELP_STEPS.length - 1, index));
+  const step = BEGINNER_HELP_STEPS[beginnerHelpStepIndex];
+  beginnerHelpTitle.textContent = step.title;
+  beginnerHelpBody.textContent = step.body;
+  beginnerHelpProgress.textContent = `${beginnerHelpStepIndex + 1} / ${BEGINNER_HELP_STEPS.length}`;
+  beginnerHelpPrev.disabled = beginnerHelpStepIndex === 0;
+  beginnerHelpNext.textContent = beginnerHelpStepIndex >= BEGINNER_HELP_STEPS.length - 1 ? "완료" : "다음";
+  positionBeginnerHelp();
+}
+
+function positionBeginnerHelp() {
+  if (!beginnerHelpPanel || !beginnerHelpOpen) {
+    return;
+  }
+
+  const step = BEGINNER_HELP_STEPS[beginnerHelpStepIndex];
+  const target = document.querySelector(step.selector);
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+  const panelRect = beginnerHelpPanel.getBoundingClientRect();
+  const margin = 12;
+
+  if (!target || target.hidden || target.getClientRects().length === 0) {
+    beginnerHelpSpotlight.hidden = true;
+    beginnerHelpPanel.style.left = `${Math.max(margin, (viewportWidth - panelRect.width) / 2)}px`;
+    beginnerHelpPanel.style.top = `${Math.max(margin, viewportHeight - panelRect.height - 24)}px`;
+    return;
+  }
+
+  const rect = target.getBoundingClientRect();
+  beginnerHelpSpotlight.hidden = false;
+  beginnerHelpSpotlight.style.left = `${Math.max(0, rect.left - 6)}px`;
+  beginnerHelpSpotlight.style.top = `${Math.max(0, rect.top - 6)}px`;
+  beginnerHelpSpotlight.style.width = `${Math.min(viewportWidth, rect.width + 12)}px`;
+  beginnerHelpSpotlight.style.height = `${Math.min(viewportHeight, rect.height + 12)}px`;
+
+  const preferRight = rect.left + rect.width / 2 < viewportWidth * 0.56;
+  let left = preferRight ? rect.right + margin : rect.left - panelRect.width - margin;
+  if (viewportWidth <= 720 || left < margin || left + panelRect.width > viewportWidth - margin) {
+    left = Math.min(viewportWidth - panelRect.width - margin, Math.max(margin, rect.left));
+  }
+
+  let top = rect.top;
+  if (top + panelRect.height > viewportHeight - margin) {
+    top = rect.top - panelRect.height - margin;
+  }
+  if (top < margin) {
+    top = Math.min(viewportHeight - panelRect.height - margin, rect.bottom + margin);
+  }
+
+  beginnerHelpPanel.style.left = `${Math.max(margin, Math.min(left, viewportWidth - panelRect.width - margin))}px`;
+  beginnerHelpPanel.style.top = `${Math.max(margin, Math.min(top, viewportHeight - panelRect.height - margin))}px`;
 }
 
 function bindLoadoutDrag() {
@@ -6042,6 +6291,9 @@ function updateUi({ skipSnapshotBroadcast = false } = {}) {
   syncBoardOverlays();
   syncGlobalVoiceOvers();
   refreshTabUnreadClasses();
+  if (beginnerHelpOpen) {
+    positionBeginnerHelp();
+  }
   if (!skipSnapshotBroadcast) {
     broadcastGameSnapshot("ui");
   }
