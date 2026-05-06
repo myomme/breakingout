@@ -253,6 +253,7 @@ body {
 }
 
 .session-chat {
+  position: relative;
   display: grid;
   gap: 9px;
   border: 1px solid rgba(160, 178, 166, 0.24);
@@ -265,11 +266,19 @@ body {
 }
 
 .session-chat-header {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   padding: 10px 12px 0;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.session-chat.is-dragging .session-chat-header {
+  cursor: grabbing;
 }
 
 .session-chat-header > div:first-child {
@@ -294,16 +303,19 @@ body {
 }
 
 .session-chat-actions {
+  position: absolute;
+  top: -15px;
+  right: 8px;
   display: flex;
   gap: 5px;
 }
 
 .session-chat-actions button {
-  min-width: 30px;
-  min-height: 26px;
+  min-width: 32px;
+  min-height: 24px;
   border: 1px solid rgba(210, 221, 207, 0.18);
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.07);
+  border-radius: 999px;
+  background: rgba(10, 14, 14, 0.92);
   color: rgba(238, 242, 232, 0.82);
   padding: 0 7px;
   font-size: 10px;
@@ -419,7 +431,7 @@ body {
   background: transparent;
   box-shadow: none;
   backdrop-filter: none;
-  opacity: 0.32;
+  opacity: 0.68;
   transition: opacity 140ms ease;
 }
 
@@ -434,7 +446,8 @@ body {
 
 .session-chat--game:not(:hover):not(:focus-within) .session-chat-header,
 .session-chat--game:not(:hover):not(:focus-within) .session-chat-form {
-  display: none;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .session-chat--game .session-chat-messages {
@@ -445,13 +458,13 @@ body {
   width: fit-content;
   max-width: min(320px, 100%);
   border-left: 0;
-  background: rgba(9, 13, 13, 0.38);
-  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.16);
+  background: rgba(9, 13, 13, 0.62);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.22);
 }
 
 .session-chat--game .session-chat-message.is-mine {
   justify-self: end;
-  background: rgba(44, 71, 76, 0.42);
+  background: rgba(44, 71, 76, 0.66);
 }
 
 .session-chat--lobby {
@@ -463,13 +476,14 @@ body {
   max-height: min(520px, calc(100vh - 330px));
 }
 
-@media (min-width: 1280px) {
+@media (min-width: 1180px) {
   .session-chat--lobby {
     position: fixed;
     top: max(52px, env(safe-area-inset-top));
-    left: calc(50vw + min(380px, calc((100vw - 32px) / 2)) + 18px);
+    right: clamp(16px, calc((100vw - 1180px) / 2), 180px);
+    left: auto;
     z-index: 131;
-    width: clamp(280px, calc(50vw - 420px), 380px);
+    width: clamp(300px, 21vw, 390px);
     max-height: calc(100vh - 104px);
   }
 
@@ -2747,6 +2761,13 @@ dd {
   }
 
   .session-chat--lobby {
+    position: fixed;
+    right: max(8px, env(safe-area-inset-right));
+    bottom: max(8px, env(safe-area-inset-bottom));
+    left: max(8px, env(safe-area-inset-left));
+    z-index: 131;
+    width: auto;
+    max-height: min(42dvh, 310px);
     min-height: 0;
     border-radius: 8px;
   }
@@ -2835,12 +2856,13 @@ dd {
 
   .session-chat--game {
     left: max(8px, env(safe-area-inset-left));
-    right: 82px;
+    right: max(78px, calc(env(safe-area-inset-right) + 72px));
     bottom: max(92px, calc(env(safe-area-inset-bottom) + 84px));
     width: auto;
-    max-height: min(46dvh, 330px);
+    max-height: min(42dvh, 330px);
     z-index: 23;
     border-radius: 10px;
+    opacity: 0.84;
   }
 
   .session-chat--game .session-chat-toggle {
@@ -2858,6 +2880,7 @@ dd {
     font-size: 12px;
     font-weight: 950;
     letter-spacing: 0.08em;
+    width: 74px;
   }
 
   .session-chat--game .session-chat-toggle span {
@@ -2878,7 +2901,7 @@ dd {
 
   .session-chat--game.is-collapsed {
     right: auto;
-    width: 86px;
+    width: 74px;
     border: 0;
     background: transparent;
     box-shadow: none;
@@ -2889,13 +2912,19 @@ dd {
     display: none;
   }
 
+  .session-chat--game:not(.is-collapsed) .session-chat-header,
+  .session-chat--game:not(.is-collapsed) .session-chat-form {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
   .session-chat--game:not(.is-collapsed) .session-chat-toggle {
     margin: 0 0 7px;
   }
 
   .session-chat--game .session-chat-messages {
     min-height: 84px;
-    max-height: min(24dvh, 160px);
+    max-height: min(23dvh, 160px);
   }
 
   .session-chat--game .session-chat-form {

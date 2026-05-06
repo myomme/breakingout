@@ -272,6 +272,13 @@ const loadoutDragState = {
   offsetX: 0,
   offsetY: 0
 };
+const chatDragState = {
+  dragging: false,
+  pointerId: null,
+  panel: null,
+  offsetX: 0,
+  offsetY: 0
+};
 const playedVoiceCueKeys = new Set();
 let voiceStateInitialized = false;
 let lastVoiceRaid = null;
@@ -3395,13 +3402,7 @@ function ensureSessionChatUi() {
         <button type="submit">전송</button>
       </form>
     `;
-    if (roomSide) {
-      roomSide.append(lobbyChat);
-    } else if (roomMain) {
-      roomMain.insertBefore(lobbyChat, startGameButton);
-    } else if (roomStep) {
-      roomStep.append(lobbyChat);
-    }
+    document.body.append(lobbyChat);
   }
 
   const boardPanel = document.querySelector(".game-board-panel");
@@ -3420,7 +3421,7 @@ function ensureSessionChatUi() {
     gameChat.setAttribute("aria-label", "Game Chat");
     gameChat.innerHTML = `
       <button id="gameChatToggle" class="session-chat-toggle" type="button" aria-expanded="false">
-        <strong>채팅</strong>
+        <strong>+</strong>
         <span id="gameChatBadge" hidden>0</span>
       </button>
       <div class="session-chat-body">
@@ -3499,6 +3500,72 @@ function bindSessionChatEvents() {
     document.body.dataset.chatEnterBound = "true";
     window.addEventListener("keydown", handleChatEnterShortcut);
   }
+
+  bindChatWindowDrag(document.querySelector(".session-chat--lobby"));
+  bindChatWindowDrag(gameChatPanel);
+}
+
+function bindChatWindowDrag(panel) {
+  const header = panel?.querySelector(".session-chat-header");
+  if (!panel || !header || header.dataset.dragBound === "true") {
+    return;
+  }
+
+  header.dataset.dragBound = "true";
+  header.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0 && event.pointerType !== "touch") {
+      return;
+    }
+
+    if (event.target.closest("button, input, select, textarea")) {
+      return;
+    }
+
+    const rect = panel.getBoundingClientRect();
+    chatDragState.dragging = true;
+    chatDragState.pointerId = event.pointerId;
+    chatDragState.panel = panel;
+    chatDragState.offsetX = event.clientX - rect.left;
+    chatDragState.offsetY = event.clientY - rect.top;
+    panel.classList.add("is-dragging");
+    panel.classList.add("has-custom-position");
+    header.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  }, { passive: false });
+
+  header.addEventListener("pointermove", (event) => {
+    if (!chatDragState.dragging || chatDragState.pointerId !== event.pointerId || chatDragState.panel !== panel) {
+      return;
+    }
+
+    moveChatPanel(panel, event.clientX - chatDragState.offsetX, event.clientY - chatDragState.offsetY);
+    event.preventDefault();
+  }, { passive: false });
+
+  const endDrag = (event) => {
+    if (chatDragState.pointerId !== event.pointerId || chatDragState.panel !== panel) {
+      return;
+    }
+
+    chatDragState.dragging = false;
+    chatDragState.pointerId = null;
+    chatDragState.panel = null;
+    panel.classList.remove("is-dragging");
+  };
+
+  header.addEventListener("pointerup", endDrag);
+  header.addEventListener("pointercancel", endDrag);
+}
+
+function moveChatPanel(panel, left, top) {
+  const rect = panel.getBoundingClientRect();
+  const margin = 8;
+  const nextLeft = Math.max(margin, Math.min(left, window.innerWidth - rect.width - margin));
+  const nextTop = Math.max(margin, Math.min(top, window.innerHeight - rect.height - margin));
+  panel.style.left = `${nextLeft}px`;
+  panel.style.top = `${nextTop}px`;
+  panel.style.right = "auto";
+  panel.style.bottom = "auto";
 }
 
 function handleChatAction(button) {
@@ -3659,6 +3726,14 @@ function addChatMessage(message, { unread = false } = {}) {
 
 function renderSessionChat() {
   ensureSessionChatUi();
+  const lobbyChatPanel = document.querySelector(".session-chat--lobby");
+  if (lobbyChatPanel) {
+    lobbyChatPanel.hidden = gameStarted || !lobbySession.currentRoom;
+  }
+  if (gameChatPanel) {
+    gameChatPanel.hidden = !gameStarted;
+  }
+
   const html = chatMessages.length
     ? chatMessages.map(renderChatMessage).join("")
     : "<li class=\"session-chat-empty\">아직 메시지가 없습니다.</li>";
