@@ -180,6 +180,7 @@ let roomSyncChannel = null;
 let gameServerSocket = null;
 let gameServerConnected = false;
 let pendingServerSnapshotRoomId = null;
+let queuedRemoteGameSnapshot = null;
 const pendingRoomActions = new Map();
 let applyingRemoteSnapshot = false;
 let lastSnapshotVersion = 0;
@@ -1807,6 +1808,18 @@ function handleServerMessage(message) {
     return;
   }
 
+  if (message.type === "snapshotRequest") {
+    handleSnapshotRequest(message);
+    return;
+  }
+
+  if (message.type === "snapshotUnavailable") {
+    if (message.roomId === lobbySession.currentRoom?.id && !isLocalHost()) {
+      setStartStatus("서버에 저장된 진행 정보가 없어 방장에게 다시 요청 중입니다.");
+    }
+    return;
+  }
+
   if (message.type === "playerCommand") {
     void handleRemotePlayerCommand(message);
   }
@@ -1912,6 +1925,7 @@ function requestServerGameSnapshot(roomId) {
   }
 
   pendingServerSnapshotRoomId = roomId;
+  setStartStatus("방장과 진행 상황 동기화 중입니다.");
   return sendServerMessage({
     type: "getGameSnapshot",
     roomId,
@@ -2129,6 +2143,13 @@ async function handleRemoteGameStart(room) {
   }
 
     await handleStartGame({ remoteStart: true });
+  if (queuedRemoteGameSnapshot?.roomId === room.id) {
+    const queuedSnapshot = queuedRemoteGameSnapshot;
+    queuedRemoteGameSnapshot = null;
+    handleRemoteGameSnapshot(queuedSnapshot);
+    return;
+  }
+
   const savedSnapshot = readJsonStorage(`${GAME_STATE_STORAGE_PREFIX}${room.id}`, null);
   if (savedSnapshot) {
     handleRemoteGameSnapshot(savedSnapshot);
@@ -2156,6 +2177,16 @@ function broadcastGameSnapshot(reason = "state", meta = {}) {
   roomSyncChannel?.postMessage(payload);
   sendServerMessage(payload);
   writeJsonStorage(`${GAME_STATE_STORAGE_PREFIX}${payload.roomId}`, payload);
+}
+
+function handleSnapshotRequest(message) {
+  if (!isLocalHost() || !gameStarted || message.roomId !== lobbySession.currentRoom?.id) {
+    return;
+  }
+
+  broadcastGameSnapshot("snapshotReply", {
+    requestedBy: message.requesterId ?? null
+  });
 }
 
 function handleRemoteGameSnapshot(payload) {
@@ -2201,6 +2232,7 @@ function handleRemoteGameSnapshot(payload) {
   }
 
   if (!state || !gameStarted) {
+    queuedRemoteGameSnapshot = payload;
     return;
   }
 

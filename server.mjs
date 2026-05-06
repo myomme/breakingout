@@ -215,7 +215,23 @@ function handleMessage(client, message) {
 
   if (message.type === "getGameSnapshot") {
     const snapshot = snapshots.get(message.roomId);
-    if (snapshot) sendJson(client, snapshot);
+    if (snapshot) {
+      sendJson(client, snapshot);
+    } else {
+      broadcast({
+        type: "snapshotRequest",
+        roomId: message.roomId,
+        requesterId: message.sourceId ?? null,
+        sourceId: "server",
+        at: Date.now()
+      });
+      sendJson(client, {
+        type: "snapshotUnavailable",
+        roomId: message.roomId,
+        sourceId: "server",
+        at: Date.now()
+      });
+    }
     return;
   }
 
