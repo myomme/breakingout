@@ -117,6 +117,7 @@ let gameChatBadge = document.querySelector("#gameChatBadge");
 let gameChatMessages = document.querySelector("#gameChatMessages");
 let gameChatForm = document.querySelector("#gameChatForm");
 let gameChatInput = document.querySelector("#gameChatInput");
+let chatDisabled = false;
 
 let state;
 let renderer;
@@ -3379,8 +3380,14 @@ function ensureSessionChatUi() {
     lobbyChat.setAttribute("aria-label", "Room Chat");
     lobbyChat.innerHTML = `
       <header class="session-chat-header">
-        <strong>작전 채팅</strong>
-        <span>방 세션 전용</span>
+        <div>
+          <strong>작전 채팅</strong>
+          <span>방 세션 전용</span>
+        </div>
+        <div class="session-chat-actions">
+          <button type="button" data-chat-action="toggle" data-chat-target="lobby" aria-label="채팅 접기">-</button>
+          <button type="button" data-chat-action="disable" data-chat-target="lobby" aria-label="채팅 비활성화">off</button>
+        </div>
       </header>
       <ul id="lobbyChatMessages" class="session-chat-messages"></ul>
       <form id="lobbyChatForm" class="session-chat-form">
@@ -3418,8 +3425,14 @@ function ensureSessionChatUi() {
       </button>
       <div class="session-chat-body">
         <header class="session-chat-header">
-          <strong>작전 채팅</strong>
-          <span>레이드 세션</span>
+          <div>
+            <strong>작전 채팅</strong>
+            <span>레이드 세션</span>
+          </div>
+          <div class="session-chat-actions">
+            <button type="button" data-chat-action="toggle" data-chat-target="game" aria-label="채팅 접기">-</button>
+            <button type="button" data-chat-action="disable" data-chat-target="game" aria-label="채팅 비활성화">off</button>
+          </div>
         </header>
         <ul id="gameChatMessages" class="session-chat-messages"></ul>
         <form id="gameChatForm" class="session-chat-form">
@@ -3472,10 +3485,88 @@ function bindSessionChatEvents() {
       }
     });
   }
+
+  document.querySelectorAll("[data-chat-action]").forEach((button) => {
+    if (button.dataset.bound === "true") {
+      return;
+    }
+
+    button.dataset.bound = "true";
+    button.addEventListener("click", () => handleChatAction(button));
+  });
+
+  if (document.body.dataset.chatEnterBound !== "true") {
+    document.body.dataset.chatEnterBound = "true";
+    window.addEventListener("keydown", handleChatEnterShortcut);
+  }
+}
+
+function handleChatAction(button) {
+  const target = button.dataset.chatTarget;
+  const panel = target === "lobby" ? document.querySelector(".session-chat--lobby") : gameChatPanel;
+  if (!panel) {
+    return;
+  }
+
+  if (button.dataset.chatAction === "toggle") {
+    const collapsed = panel.classList.toggle("is-collapsed");
+    button.textContent = collapsed ? "+" : "-";
+    if (!collapsed && target === "game") {
+      gameChatInput?.focus();
+    }
+    return;
+  }
+
+  if (button.dataset.chatAction === "disable") {
+    chatDisabled = !chatDisabled;
+    document.querySelectorAll(".session-chat").forEach((chat) => chat.classList.toggle("is-disabled", chatDisabled));
+    [lobbyChatInput, gameChatInput].forEach((input) => {
+      if (input) input.disabled = chatDisabled;
+    });
+    document.querySelectorAll("[data-chat-action='disable']").forEach((toggle) => {
+      toggle.textContent = chatDisabled ? "on" : "off";
+      toggle.setAttribute("aria-label", chatDisabled ? "채팅 활성화" : "채팅 비활성화");
+    });
+    setChatInputStatus(chatDisabled ? "채팅을 비활성화했습니다." : "채팅을 다시 활성화했습니다.");
+  }
+}
+
+function handleChatEnterShortcut(event) {
+  if (!gameStarted || event.key !== "Enter" || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) {
+    return;
+  }
+
+  const active = document.activeElement;
+  const typing = active === gameChatInput;
+  if (typing) {
+    event.preventDefault();
+    sendChatFromInput(gameChatInput);
+    gameChatInput?.blur();
+    gameChatPanel?.classList.add("is-collapsed");
+    gameChatToggle?.setAttribute("aria-expanded", "false");
+    return;
+  }
+
+  if (active && ["INPUT", "TEXTAREA", "SELECT", "BUTTON"].includes(active.tagName)) {
+    return;
+  }
+
+  event.preventDefault();
+  if (chatDisabled) {
+    setChatInputStatus("채팅이 비활성화되어 있습니다.");
+    return;
+  }
+  gameChatPanel?.classList.remove("is-collapsed");
+  gameChatToggle?.setAttribute("aria-expanded", "true");
+  gameChatInput?.focus();
 }
 
 function sendChatFromInput(input) {
   const text = input?.value.trim();
+  if (chatDisabled) {
+    setChatInputStatus("채팅이 비활성화되어 있습니다.");
+    return;
+  }
   if (!text || !lobbySession.currentRoom?.id) {
     setChatInputStatus(!text ? "메시지를 입력하세요." : "방에 입장한 뒤 채팅할 수 있습니다.");
     return;
