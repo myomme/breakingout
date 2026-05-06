@@ -108,6 +108,15 @@ const roomMapMeta = document.querySelector("#roomMapMeta");
 const comPlayerCount = document.querySelector("#comPlayerCount");
 const playerLoadoutSettings = document.querySelector("#playerLoadoutSettings");
 const comLoadoutSettings = document.querySelector("#comLoadoutSettings");
+let lobbyChatMessages = document.querySelector("#lobbyChatMessages");
+let lobbyChatForm = document.querySelector("#lobbyChatForm");
+let lobbyChatInput = document.querySelector("#lobbyChatInput");
+let gameChatPanel = document.querySelector("#gameChatPanel");
+let gameChatToggle = document.querySelector("#gameChatToggle");
+let gameChatBadge = document.querySelector("#gameChatBadge");
+let gameChatMessages = document.querySelector("#gameChatMessages");
+let gameChatForm = document.querySelector("#gameChatForm");
+let gameChatInput = document.querySelector("#gameChatInput");
 
 let state;
 let renderer;
@@ -194,6 +203,10 @@ const playedAttackRevealVersions = new Set();
 const playedEventRevealVersions = new Set();
 const processedRemoteCommandIds = new Set();
 let presenceHeartbeatTimer = 0;
+const chatMessages = [];
+const seenChatMessageIds = new Set();
+let unreadGameChatCount = 0;
+const clearedChatRoomIds = new Set();
 const loadoutDragState = {
   dragging: false,
   pointerId: null,
@@ -781,13 +794,16 @@ function syncPlayersFromSlots(room) {
 }
 
 function bindLobbyEvents() {
+  ensureSessionChatUi();
   enterLobbyButton?.addEventListener("click", enterLobby);
   nicknameInput?.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
       enterLobby();
     }
   });
-  createRoomButton?.addEventListener("click", createRoom);
+  createRoomButton?.addEventListener("click", () => {
+    void createRoom();
+  });
   joinRoomButton?.addEventListener("click", () => joinRoomByCode(roomCodeInput?.value));
   roomCodeInput?.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
@@ -821,6 +837,7 @@ function bindLobbyEvents() {
   });
   returnLobbyButton?.addEventListener("click", returnToLobbyFromGame);
   bindLoadoutDrag();
+  bindSessionChatEvents();
 }
 
 function restoreLobbySession() {
@@ -926,10 +943,17 @@ function enterLobby() {
   setStartStatus("방을 만들거나 방 번호로 입장하세요.");
 }
 
-function createRoom() {
+async function createRoom() {
   if (!lobbySession.nickname) {
     showLobbyStep("login");
     setStartStatus("닉네임을 먼저 입력하세요.");
+    return;
+  }
+
+  try {
+    await ensureDefaultMapData();
+  } catch (error) {
+    setStartStatus(`기본 Farm 맵을 불러오지 못했습니다: ${error.message}`);
     return;
   }
 
@@ -972,6 +996,18 @@ function createRoom() {
   renderComLoadoutSettings();
   renderLobby();
   setStartStatus(`방 ${room.id} 생성 완료. 친구는 방 번호로 입장할 수 있습니다.`);
+}
+
+async function ensureDefaultMapData() {
+  if (currentMapData?.mapId && currentMapData.mapId !== "playtest_seed_map") {
+    return currentMapData;
+  }
+
+  const mapData = await loadJson(DEFAULT_MAP_PATH);
+  validateMapPackageData(mapData);
+  currentMapData = mapData;
+  cacheRoomMapPackage(createMapPackage(currentMapData, DEFAULT_MAP_NAME));
+  return currentMapData;
 }
 
 function joinRoomByCode(rawCode) {
@@ -1054,6 +1090,7 @@ function leaveRoom() {
   if (sendRoomAction("leaveRoom", { roomId: room.id })) {
     lobbySession.currentRoom = null;
     forgetCurrentRoom();
+    clearLocalChatMessages();
     renderLobby();
     showLobbyStep("lobby");
     setStartStatus("로비로 돌아왔습니다.");
@@ -1081,6 +1118,7 @@ function leaveRoom() {
 
   lobbySession.currentRoom = null;
   forgetCurrentRoom();
+  clearLocalChatMessages();
   renderLobby();
   showLobbyStep("lobby");
   setStartStatus("로비로 돌아왔습니다.");
@@ -1295,6 +1333,7 @@ function renderLobby() {
   }
   renderRoomList();
   renderRoomPanel();
+  renderSessionChat();
 }
 
 function renderRoomList() {
@@ -1803,6 +1842,7 @@ function initServerSync() {
     requestServerRooms();
     if (lobbySession.currentRoom?.id) {
       requestServerGameSnapshot(lobbySession.currentRoom.id);
+      requestChatHistory(lobbySession.currentRoom.id);
     }
     setStartStatus("서버 멀티 연결됨.");
   });
@@ -1845,6 +1885,21 @@ function handleServerMessage(message) {
 
   if (message.type === "serverError") {
     setStartStatus(`서버 오류: ${message.message ?? "알 수 없는 오류"}`);
+    return;
+  }
+
+  if (message.type === "chatHistory") {
+    handleChatHistory(message);
+    return;
+  }
+
+  if (message.type === "chatMessage") {
+    handleChatMessage(message);
+    return;
+  }
+
+  if (message.type === "chatCleared") {
+    handleChatCleared(message);
     return;
   }
 
@@ -1952,6 +2007,7 @@ function handleRoomActionResult(message) {
   cacheRoomMapPackage(room.mapPackage);
   lobbySession.currentRoom = room;
   rememberCurrentRoom(room.id);
+  requestChatHistory(room.id);
   roomStoreCache = mergeRoomLists([room], roomStoreCache);
   writeJsonStorage(ROOM_STORAGE_KEY, roomStoreCache);
   if (!gameStarted) {
@@ -1992,6 +2048,19 @@ function requestServerGameSnapshot(roomId) {
     type: "getGameSnapshot",
     roomId,
     sourceId: lobbySession.localPlayerId
+  });
+}
+
+function requestChatHistory(roomId = lobbySession.currentRoom?.id) {
+  if (!roomId) {
+    return false;
+  }
+
+  return sendServerMessage({
+    type: "getChat",
+    roomId,
+    sourceId: lobbySession.localPlayerId,
+    at: Date.now()
   });
 }
 
@@ -2163,6 +2232,7 @@ function handleRoomStoreChanged(reason = "sync", syncedRooms = null) {
 
   if (previousRoomId && !activeRoom) {
     lobbySession.currentRoom = null;
+    clearLocalChatMessages();
     renderLobby();
     if (!gameStarted) {
       showLobbyStep("lobby");
@@ -3150,6 +3220,229 @@ function refreshTabUnreadClasses() {
 function closeDrawer() {
   playDrawerCloseSfx(activeDrawerTab);
   loadoutPanel.classList.add("is-minimized");
+}
+
+function ensureSessionChatUi() {
+  if (!roomStep || !document.querySelector("#lobbyChatMessages")) {
+    const lobbyChat = document.createElement("section");
+    lobbyChat.className = "session-chat session-chat--lobby";
+    lobbyChat.setAttribute("aria-label", "Room Chat");
+    lobbyChat.innerHTML = `
+      <header class="session-chat-header">
+        <strong>작전 채팅</strong>
+        <span>방 세션 전용</span>
+      </header>
+      <ul id="lobbyChatMessages" class="session-chat-messages"></ul>
+      <form id="lobbyChatForm" class="session-chat-form">
+        <input id="lobbyChatInput" type="text" maxlength="240" placeholder="방에 메시지 보내기" autocomplete="off">
+        <button type="submit">전송</button>
+      </form>
+    `;
+    if (roomStep) {
+      if (startGameButton?.parentElement === roomStep) {
+        roomStep.insertBefore(lobbyChat, startGameButton);
+      } else {
+        roomStep.append(lobbyChat);
+      }
+    }
+  }
+
+  const boardPanel = document.querySelector(".game-board-panel");
+  if (boardPanel && !document.querySelector("#gameChatPanel")) {
+    const gameChat = document.createElement("section");
+    gameChat.id = "gameChatPanel";
+    gameChat.className = "session-chat session-chat--game is-collapsed";
+    gameChat.setAttribute("aria-label", "Game Chat");
+    gameChat.innerHTML = `
+      <button id="gameChatToggle" class="session-chat-toggle" type="button" aria-expanded="false">
+        <strong>채팅</strong>
+        <span id="gameChatBadge" hidden>0</span>
+      </button>
+      <div class="session-chat-body">
+        <header class="session-chat-header">
+          <strong>작전 채팅</strong>
+          <span>레이드 세션</span>
+        </header>
+        <ul id="gameChatMessages" class="session-chat-messages"></ul>
+        <form id="gameChatForm" class="session-chat-form">
+          <input id="gameChatInput" type="text" maxlength="240" placeholder="작전 메시지" autocomplete="off">
+          <button type="submit">전송</button>
+        </form>
+      </div>
+    `;
+    boardPanel.append(gameChat);
+  }
+
+  lobbyChatMessages = document.querySelector("#lobbyChatMessages");
+  lobbyChatForm = document.querySelector("#lobbyChatForm");
+  lobbyChatInput = document.querySelector("#lobbyChatInput");
+  gameChatPanel = document.querySelector("#gameChatPanel");
+  gameChatToggle = document.querySelector("#gameChatToggle");
+  gameChatBadge = document.querySelector("#gameChatBadge");
+  gameChatMessages = document.querySelector("#gameChatMessages");
+  gameChatForm = document.querySelector("#gameChatForm");
+  gameChatInput = document.querySelector("#gameChatInput");
+}
+
+function bindSessionChatEvents() {
+  if (lobbyChatForm?.dataset.bound !== "true") {
+    lobbyChatForm.dataset.bound = "true";
+    lobbyChatForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      sendChatFromInput(lobbyChatInput);
+    });
+  }
+
+  if (gameChatForm?.dataset.bound !== "true") {
+    gameChatForm.dataset.bound = "true";
+    gameChatForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      sendChatFromInput(gameChatInput);
+    });
+  }
+
+  if (gameChatToggle?.dataset.bound !== "true") {
+    gameChatToggle.dataset.bound = "true";
+    gameChatToggle.addEventListener("click", () => {
+      const collapsed = gameChatPanel.classList.toggle("is-collapsed");
+      gameChatToggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+      if (!collapsed) {
+        unreadGameChatCount = 0;
+        renderChatBadge();
+        scrollChatToBottom(gameChatMessages);
+      }
+    });
+  }
+}
+
+function sendChatFromInput(input) {
+  const text = input?.value.trim();
+  if (!text || !lobbySession.currentRoom?.id) {
+    return;
+  }
+
+  const ok = sendServerMessage({
+    type: "chatMessage",
+    roomId: lobbySession.currentRoom.id,
+    sourceId: lobbySession.localPlayerId,
+    text,
+    raid: gameStarted ? state?.raid : null,
+    phase: gameStarted ? state?.phase : null,
+    messageId: `${lobbySession.localPlayerId}_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+    at: Date.now()
+  });
+
+  if (ok) {
+    input.value = "";
+  } else {
+    setStartStatus("서버 연결 후 채팅을 사용할 수 있습니다.");
+  }
+}
+
+function handleChatHistory(message) {
+  if (message.roomId !== lobbySession.currentRoom?.id) {
+    return;
+  }
+
+  chatMessages.length = 0;
+  seenChatMessageIds.clear();
+  (message.messages ?? []).forEach((entry) => addChatMessage(entry, { unread: false }));
+  renderSessionChat();
+}
+
+function handleChatMessage(message) {
+  if (message.roomId !== lobbySession.currentRoom?.id || !message.message) {
+    return;
+  }
+
+  const mine = message.message.playerId === lobbySession.localPlayerId;
+  const gameChatClosed = gameStarted && gameChatPanel?.classList.contains("is-collapsed");
+  addChatMessage(message.message, { unread: !mine && gameChatClosed });
+  renderSessionChat();
+}
+
+function handleChatCleared(message) {
+  if (message.roomId !== lobbySession.currentRoom?.id) {
+    return;
+  }
+
+  clearLocalChatMessages();
+}
+
+function clearLocalChatMessages() {
+  chatMessages.length = 0;
+  seenChatMessageIds.clear();
+  unreadGameChatCount = 0;
+  renderSessionChat();
+}
+
+function addChatMessage(message, { unread = false } = {}) {
+  if (!message?.id || seenChatMessageIds.has(message.id)) {
+    return;
+  }
+
+  seenChatMessageIds.add(message.id);
+  chatMessages.push(message);
+  while (chatMessages.length > 80) {
+    const removed = chatMessages.shift();
+    seenChatMessageIds.delete(removed.id);
+  }
+
+  if (unread) {
+    unreadGameChatCount += 1;
+  }
+}
+
+function renderSessionChat() {
+  ensureSessionChatUi();
+  const html = chatMessages.length
+    ? chatMessages.map(renderChatMessage).join("")
+    : "<li class=\"session-chat-empty\">아직 메시지가 없습니다.</li>";
+
+  if (lobbyChatMessages) {
+    lobbyChatMessages.innerHTML = html;
+    scrollChatToBottom(lobbyChatMessages);
+  }
+
+  if (gameChatMessages) {
+    gameChatMessages.innerHTML = html;
+    scrollChatToBottom(gameChatMessages);
+  }
+
+  renderChatBadge();
+}
+
+function renderChatMessage(message) {
+  const mine = message.playerId === lobbySession.localPlayerId;
+  const context = message.raid && message.phase ? `R${message.raid} P${message.phase}` : "Lobby";
+  return `
+    <li class="session-chat-message ${mine ? "is-mine" : ""}">
+      <div>
+        <strong>${escapeHtml(message.nickname ?? "Player")}</strong>
+        <small>${context}</small>
+      </div>
+      <p>${escapeHtml(message.text ?? "")}</p>
+    </li>
+  `;
+}
+
+function renderChatBadge() {
+  if (!gameChatBadge) {
+    return;
+  }
+
+  gameChatBadge.hidden = unreadGameChatCount <= 0;
+  gameChatBadge.textContent = String(Math.min(unreadGameChatCount, 9));
+}
+
+function scrollChatToBottom(list) {
+  if (!list) {
+    return;
+  }
+
+  requestAnimationFrame(() => {
+    list.scrollTop = list.scrollHeight;
+  });
 }
 
 function bindLoadoutDrag() {
@@ -5623,6 +5916,23 @@ function renderGameSummaryOverlay() {
       [`${entry.name} final raid`, entry.extractedThisRaid ? "Extracted" : entry.dead ? "Dead / Lost" : "Failed / Lost"]
     ]))
   ]);
+
+  clearSessionChatOnGameEnd();
+}
+
+function clearSessionChatOnGameEnd() {
+  const roomId = lobbySession.currentRoom?.id;
+  if (!roomId || !isLocalHost() || clearedChatRoomIds.has(roomId)) {
+    return;
+  }
+
+  clearedChatRoomIds.add(roomId);
+  sendServerMessage({
+    type: "clearChat",
+    roomId,
+    sourceId: lobbySession.localPlayerId,
+    at: Date.now()
+  });
 }
 
 async function restartGameFromSummary() {

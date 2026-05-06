@@ -11,7 +11,9 @@ const WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 const clients = new Set();
 let rooms = [];
 const snapshots = new Map();
+const chatMessagesByRoom = new Map();
 const ROOM_TTL_MS = 12 * 60 * 60 * 1000;
+const MAX_CHAT_MESSAGES = 80;
 
 const MIME_TYPES = new Map([
   [".html", "text/html; charset=utf-8"],
@@ -195,6 +197,27 @@ function handleMessage(client, message) {
     return;
   }
 
+  if (message.type === "getChat") {
+    sendJson(client, {
+      type: "chatHistory",
+      roomId: message.roomId,
+      sourceId: "server",
+      messages: chatMessagesByRoom.get(message.roomId) ?? [],
+      at: Date.now()
+    });
+    return;
+  }
+
+  if (message.type === "chatMessage") {
+    handleChatMessage(message);
+    return;
+  }
+
+  if (message.type === "clearChat") {
+    handleClearChat(message);
+    return;
+  }
+
   if (message.type === "roomAction") {
     handleRoomAction(client, message);
     return;
@@ -238,6 +261,38 @@ function handleMessage(client, message) {
   if (message.type === "playerCommand") {
     broadcast({ ...message, sourceClientId: client.id });
   }
+}
+
+function handleChatMessage(message) {
+  const room = findRoom(message.roomId);
+  if (!room) return;
+
+  const slot = normalizeServerSlots(room.slots).find((entry) => entry.type === "player" && entry.playerId === message.sourceId);
+  if (!slot) return;
+
+  const text = String(message.text ?? "").replace(/\s+/g, " ").trim().slice(0, 240);
+  if (!text) return;
+
+  const chatMessage = {
+    id: message.messageId ?? crypto.randomUUID(),
+    roomId: room.id,
+    playerId: message.sourceId,
+    nickname: slot.nickname ?? "Player",
+    text,
+    phase: message.phase ?? null,
+    raid: message.raid ?? null,
+    at: Date.now()
+  };
+  const messages = [...(chatMessagesByRoom.get(room.id) ?? []), chatMessage].slice(-MAX_CHAT_MESSAGES);
+  chatMessagesByRoom.set(room.id, messages);
+  broadcast({ type: "chatMessage", sourceId: "server", roomId: room.id, message: chatMessage, at: Date.now() });
+}
+
+function handleClearChat(message) {
+  const room = findRoom(message.roomId);
+  if (!room || room.hostId !== message.sourceId) return;
+  chatMessagesByRoom.delete(room.id);
+  broadcast({ type: "chatCleared", sourceId: "server", roomId: room.id, at: Date.now() });
 }
 
 function handleRoomAction(client, message) {
@@ -418,6 +473,7 @@ function leaveServerRoom(payload, playerId) {
   if (!room.players.length) {
     rooms = rooms.filter((entry) => entry.id !== room.id);
     snapshots.delete(room.id);
+    chatMessagesByRoom.delete(room.id);
     return { ok: true, room: null, message: "Room removed" };
   }
 
@@ -738,6 +794,13 @@ function pruneRooms() {
   for (const roomId of snapshots.keys()) {
     if (!roomIds.has(roomId)) {
       snapshots.delete(roomId);
+      chatMessagesByRoom.delete(roomId);
+    }
+  }
+
+  for (const roomId of chatMessagesByRoom.keys()) {
+    if (!roomIds.has(roomId)) {
+      chatMessagesByRoom.delete(roomId);
     }
   }
 }
