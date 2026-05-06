@@ -324,7 +324,9 @@ body {
 
 .session-chat-messages {
   display: grid;
+  align-content: start;
   gap: 7px;
+  grid-auto-rows: max-content;
   min-height: 96px;
   max-height: 210px;
   margin: 0;
@@ -336,7 +338,12 @@ body {
 
 .session-chat-message {
   display: grid;
+  align-self: start;
+  justify-self: start;
   gap: 4px;
+  width: fit-content;
+  min-width: 132px;
+  max-width: min(100%, 330px);
   border-left: 2px solid rgba(185, 232, 109, 0.32);
   border-radius: 4px;
   background: rgba(255, 255, 255, 0.045);
@@ -344,6 +351,7 @@ body {
 }
 
 .session-chat-message.is-mine {
+  justify-self: end;
   border-left-color: rgba(115, 195, 209, 0.72);
   background: rgba(115, 195, 209, 0.08);
 }

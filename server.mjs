@@ -276,7 +276,7 @@ function handleChatMessage(client, message) {
     return;
   }
 
-  const text = String(message.text ?? "").replace(/\s+/g, " ").trim().slice(0, 240);
+  const text = trimChatText(String(message.text ?? "").replace(/\s+/g, " ").trim());
   if (!text) {
     sendJson(client, { type: "chatRejected", sourceId: "server", roomId: room.id, message: "Empty message", at: Date.now() });
     return;
@@ -295,6 +295,18 @@ function handleChatMessage(client, message) {
   const messages = [...(chatMessagesByRoom.get(room.id) ?? []), chatMessage].slice(-MAX_CHAT_MESSAGES);
   chatMessagesByRoom.set(room.id, messages);
   broadcast({ type: "chatMessage", sourceId: "server", roomId: room.id, message: chatMessage, at: Date.now() });
+}
+
+function trimChatText(value, maxWeight = 100) {
+  let weight = 0;
+  let result = "";
+  for (const char of String(value ?? "")) {
+    const nextWeight = weight + (/^[\x00-\x7F]$/.test(char) ? 0.5 : 1);
+    if (nextWeight > maxWeight) break;
+    weight = nextWeight;
+    result += char;
+  }
+  return result;
 }
 
 function handleClearChat(message) {

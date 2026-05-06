@@ -256,11 +256,6 @@ const BEGINNER_HELP_STEPS = [
     body: "오른쪽 탭에서 현재 장비, 가방 아이템, 이벤트 카드를 확인합니다. 빨간 점은 새로 확인할 내용이 있다는 표시입니다."
   },
   {
-    selector: "#gameChatPanel",
-    title: "작전 채팅",
-    body: "채팅은 현재 방 세션에서만 유지됩니다. 게임이 끝나거나 방이 사라지면 대화 기록도 함께 삭제됩니다."
-  },
-  {
     selector: ".kill-log-overlay",
     title: "로그와 시야 정보",
     body: "킬로그와 행동 로그는 중요한 전투 결과와 내 플레이에 관련된 정보를 알려줍니다. 시야 밖 정보는 일부러 숨겨질 수 있습니다."
@@ -3398,7 +3393,7 @@ function ensureSessionChatUi() {
       </header>
       <ul id="lobbyChatMessages" class="session-chat-messages"></ul>
       <form id="lobbyChatForm" class="session-chat-form">
-        <input id="lobbyChatInput" type="text" maxlength="240" placeholder="방에 메시지 보내기" autocomplete="off">
+        <input id="lobbyChatInput" type="text" maxlength="200" placeholder="방에 메시지 보내기" autocomplete="off">
         <button type="submit">전송</button>
       </form>
     `;
@@ -3437,7 +3432,7 @@ function ensureSessionChatUi() {
         </header>
         <ul id="gameChatMessages" class="session-chat-messages"></ul>
         <form id="gameChatForm" class="session-chat-form">
-          <input id="gameChatInput" type="text" maxlength="240" placeholder="작전 메시지" autocomplete="off">
+          <input id="gameChatInput" type="text" maxlength="200" placeholder="작전 메시지" autocomplete="off">
           <button type="submit">전송</button>
         </form>
       </div>
@@ -3464,6 +3459,7 @@ function bindSessionChatEvents() {
       event.preventDefault();
       sendChatFromInput(lobbyChatInput);
     });
+    lobbyChatInput?.addEventListener("input", () => enforceChatInputLimit(lobbyChatInput));
   }
 
   if (gameChatForm?.dataset.bound !== "true") {
@@ -3472,6 +3468,7 @@ function bindSessionChatEvents() {
       event.preventDefault();
       sendChatFromInput(gameChatInput);
     });
+    gameChatInput?.addEventListener("input", () => enforceChatInputLimit(gameChatInput));
   }
 
   if (gameChatToggle?.dataset.bound !== "true") {
@@ -3629,7 +3626,10 @@ function handleChatEnterShortcut(event) {
 }
 
 function sendChatFromInput(input) {
-  const text = input?.value.trim();
+  if (input) {
+    enforceChatInputLimit(input);
+  }
+  const text = trimChatText(input?.value ?? "").trim();
   if (chatDisabled) {
     setChatInputStatus("채팅이 비활성화되어 있습니다.");
     return;
@@ -3656,6 +3656,35 @@ function sendChatFromInput(input) {
   } else {
     setChatInputStatus("서버 연결 후 채팅을 사용할 수 있습니다.");
   }
+}
+
+function enforceChatInputLimit(input) {
+  if (!input) {
+    return;
+  }
+
+  const trimmed = trimChatText(input.value);
+  if (trimmed !== input.value) {
+    input.value = trimmed;
+  }
+}
+
+function trimChatText(value, maxWeight = 100) {
+  let weight = 0;
+  let result = "";
+  for (const char of String(value ?? "")) {
+    const nextWeight = weight + getChatCharWeight(char);
+    if (nextWeight > maxWeight) {
+      break;
+    }
+    weight = nextWeight;
+    result += char;
+  }
+  return result;
+}
+
+function getChatCharWeight(char) {
+  return /^[\x00-\x7F]$/.test(char) ? 0.5 : 1;
 }
 
 function handleChatHistory(message) {
