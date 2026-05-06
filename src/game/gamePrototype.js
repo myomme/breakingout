@@ -5359,6 +5359,70 @@ function playLootItemSfx(item) {
   playSound(rareSound ? SOUND_URLS.goldLoot : SOUND_URLS.commonLoot, { volume: 0.84 });
 }
 
+function resetGlobalVoiceTracking() {
+  playedVoiceCueKeys.clear();
+  voiceStateInitialized = false;
+  lastVoiceRaid = null;
+  lastVoicePhase = null;
+  lastVoiceRaidEnded = null;
+}
+
+function startGlobalVoiceTracking({ playRaidStart = false } = {}) {
+  if (!state) {
+    return;
+  }
+
+  voiceStateInitialized = true;
+  lastVoiceRaid = state.raid;
+  lastVoicePhase = state.phase;
+  lastVoiceRaidEnded = state.raidEnded;
+
+  if (playRaidStart && !state.raidEnded) {
+    playGlobalVoiceCue("voRaidStart", `raid-start-${state.raid}`, 0.92);
+  }
+}
+
+function syncGlobalVoiceOvers() {
+  if (!gameStarted || !state) {
+    return;
+  }
+
+  if (!voiceStateInitialized) {
+    startGlobalVoiceTracking();
+    return;
+  }
+
+  if (!state.raidEnded && state.raid !== lastVoiceRaid) {
+    playGlobalVoiceCue("voRaidStart", `raid-start-${state.raid}`, 0.92);
+  }
+
+  if (!state.raidEnded && state.phase === 8 && lastVoicePhase !== state.phase) {
+    playGlobalVoiceCue("voRaidMid", `raid-mid-${state.raid}`, 0.92);
+  }
+
+  if (state.raidEnded && lastVoiceRaidEnded !== true) {
+    const gameEnded = state.raid >= 3;
+    playGlobalVoiceCue(
+      gameEnded ? "voGameEnd" : "voRaidEnd",
+      gameEnded ? "game-end" : `raid-end-${state.raid}`,
+      0.92
+    );
+  }
+
+  lastVoiceRaid = state.raid;
+  lastVoicePhase = state.phase;
+  lastVoiceRaidEnded = state.raidEnded;
+}
+
+function playGlobalVoiceCue(soundKey, cueKey, volume = 0.92) {
+  if (!SOUND_URLS[soundKey] || playedVoiceCueKeys.has(cueKey)) {
+    return;
+  }
+
+  playedVoiceCueKeys.add(cueKey);
+  playSound(SOUND_URLS[soundKey], { volume }, { allowQueue: false });
+}
+
 function itemRarityLabel(rarity) {
   const labels = {
     common: "일반",
@@ -5567,13 +5631,15 @@ async function restartGameFromSummary() {
   }
   gameStarted = false;
   gameStarting = false;
+  resetGlobalVoiceTracking();
   if (lobbySession.currentRoom) {
     setCurrentRoomStatus("waiting");
   }
-  if (currentMapData) {
-    state = createRaidState(currentMapData);
-    clearPendingTileAction();
-    renderer.replaceState(state);
+    if (currentMapData) {
+      state = createRaidState(currentMapData);
+      resetGlobalVoiceTracking();
+      clearPendingTileAction();
+      renderer.replaceState(state);
     lastActivePlayerIndexForUi = null;
     renderer.render();
     updateUi();
@@ -5586,6 +5652,7 @@ function returnToLobbyFromGame() {
   closeCorpseLoot("closed");
   gameStarted = false;
   gameStarting = false;
+  resetGlobalVoiceTracking();
   if (lobbySession.currentRoom) {
     setCurrentRoomStatus("waiting");
   }
@@ -5658,6 +5725,7 @@ function updateUi({ skipSnapshotBroadcast = false } = {}) {
   renderTileDetails();
   setDrawerTab(activeDrawerTab);
   syncBoardOverlays();
+  syncGlobalVoiceOvers();
   refreshTabUnreadClasses();
   if (!skipSnapshotBroadcast) {
     broadcastGameSnapshot("ui");
