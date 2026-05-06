@@ -1055,6 +1055,11 @@ select {
   gap: 8px;
 }
 
+.body-hp-hud-row--stamina {
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(235, 230, 219, 0.12);
+}
+
 .body-hp-hud-row span,
 .body-hp-hud-row strong {
   color: rgba(249, 246, 238, 0.9);
@@ -1087,6 +1092,57 @@ select {
 .body-hp-hud-row.is-zero .body-hp-hud-bar {
   border-color: rgba(255, 255, 255, 0.16);
   background: #050505;
+}
+
+.body-stamina-pips {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12px, 1fr));
+  gap: 4px;
+}
+
+.body-stamina-pips span {
+  height: 10px;
+  border: 1px solid rgba(218, 228, 210, 0.22);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+}
+
+.body-stamina-pips span.is-filled {
+  border-color: rgba(185, 232, 109, 0.62);
+  background: linear-gradient(90deg, rgba(185, 232, 109, 0.95), rgba(94, 190, 124, 0.84));
+  box-shadow: 0 0 12px rgba(185, 232, 109, 0.28);
+}
+
+.body-stamina-pips span.is-spent {
+  animation: stamina-pip-spent 520ms ease-out;
+}
+
+.body-hp-hud-stamina.is-draining {
+  animation: stamina-row-drain 520ms ease-out;
+}
+
+@keyframes stamina-pip-spent {
+  0% {
+    background: rgba(185, 232, 109, 0.95);
+    transform: scaleX(1);
+    opacity: 1;
+  }
+  55% {
+    background: rgba(245, 202, 87, 0.88);
+    transform: scaleX(0.42);
+    opacity: 0.8;
+  }
+  100% {
+    background: rgba(255, 255, 255, 0.12);
+    transform: scaleX(1);
+    opacity: 1;
+  }
+}
+
+@keyframes stamina-row-drain {
+  0% { filter: brightness(1.25); }
+  100% { filter: brightness(1); }
 }
 
 .loot-reveal-card {
@@ -2969,7 +3025,7 @@ dd {
   }
 
   .body-hp-hud-row {
-    grid-template-columns: 44px 1fr 24px;
+    grid-template-columns: 48px 1fr 24px;
     gap: 6px;
   }
 
@@ -2980,6 +3036,14 @@ dd {
 
   .body-hp-hud-bar {
     height: 10px;
+  }
+
+  .body-stamina-pips {
+    gap: 3px;
+  }
+
+  .body-stamina-pips span {
+    height: 8px;
   }
 
   .kill-log-overlay {

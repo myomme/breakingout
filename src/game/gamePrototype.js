@@ -187,6 +187,7 @@ let currentMapData = null;
 let lastActivePlayerIndexForUi = null;
 const unreadTabs = new Set();
 const lastBagCountsByPlayer = new Map();
+const lastHudStaminaByPlayer = new Map();
 const roomMapCache = new Map();
 let roomStoreCache = [];
 const ROOM_STORAGE_KEY = "breakingOutPrototypeRooms";
@@ -7185,7 +7186,26 @@ function renderBodyHp() {
     .join("");
 
   if (bodyHpHud) {
-    bodyHpHud.innerHTML = entries
+    const previousStamina = lastHudStaminaByPlayer.get(player.id);
+    const staminaSpent = Number.isFinite(previousStamina) && player.stamina < previousStamina;
+    const staminaMax = Math.max(1, player.staminaMax ?? 1);
+    const staminaPips = Array.from({ length: staminaMax }, (_, index) => {
+      const filled = index < player.stamina;
+      const justSpent = staminaSpent && index >= player.stamina && index < previousStamina;
+      return `<span class="${filled ? "is-filled" : ""}${justSpent ? " is-spent" : ""}"></span>`;
+    }).join("");
+
+    bodyHpHud.innerHTML = `
+      <div class="body-hp-hud-stamina ${staminaSpent ? "is-draining" : ""}">
+        <div class="body-hp-hud-row body-hp-hud-row--stamina">
+          <span>스태미나</span>
+          <div class="body-stamina-pips" aria-label="스태미나 ${player.stamina}/${staminaMax}">
+            ${staminaPips}
+          </div>
+          <strong>${player.stamina}</strong>
+        </div>
+      </div>
+    ` + entries
       .map(([part, value]) => {
         const max = maxHp[part] ?? 1;
         const percent = Math.max(0, Math.min(100, (value / max) * 100));
@@ -7201,6 +7221,7 @@ function renderBodyHp() {
         `;
       })
       .join("");
+    lastHudStaminaByPlayer.set(player.id, player.stamina);
   }
 }
 
