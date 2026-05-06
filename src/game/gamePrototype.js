@@ -175,6 +175,8 @@ const SESSION_ROOM_ID_KEY = "breakingOutPrototypeSessionRoomId";
 const ROOM_SYNC_CHANNEL = "breakingOutPrototypeRoomSync";
 const GAME_STATE_STORAGE_PREFIX = "breakingOutPrototypeGameState:";
 const PLAYER_COMMAND_STORAGE_PREFIX = "breakingOutPrototypePlayerCommand:";
+const DEFAULT_MAP_PATH = "./data/maps/map_Farm.json";
+const DEFAULT_MAP_NAME = "Farm Raid Map";
 const PRESENCE_HEARTBEAT_MS = 4000;
 const RECONNECT_GRACE_MS = 90000;
 let roomSyncChannel = null;
@@ -517,14 +519,15 @@ async function bootstrap() {
     return;
   }
 
-  const [terrainTypes, loadedPlayerTemplate, loadedLootTables, loadedWeapons, loadedDice, loadedArmor, loadedEvents] = await Promise.all([
+  const [terrainTypes, loadedPlayerTemplate, loadedLootTables, loadedWeapons, loadedDice, loadedArmor, loadedEvents, defaultMapData] = await Promise.all([
     loadJson("./data/rules/terrainTypes.json"),
     loadJson("./data/rules/playerTemplate.json"),
     loadJson("./data/rules/lootTables.json"),
     loadJson("./data/rules/weapons.json"),
     loadJson("./data/rules/dice.json"),
     loadJson("./data/rules/armor.json"),
-    loadJson("./data/rules/events.json")
+    loadJson("./data/rules/events.json"),
+    loadJson(DEFAULT_MAP_PATH)
   ]);
 
   playerTemplate = loadedPlayerTemplate;
@@ -534,8 +537,8 @@ async function bootstrap() {
   armor = loadedArmor;
   events = loadedEvents;
 
-  const mapData = createLargeHexMap({ columns: 18, rows: 12, hexSize: 30 });
-  seedPlayableTestMap(mapData);
+  const mapData = defaultMapData;
+  validateMapPackageData(mapData);
   currentMapData = mapData;
 
   populateWeapons();
@@ -938,7 +941,7 @@ function createRoom() {
   if (sendRoomAction("createRoom", {
     player: createRoomPlayer(),
     maxPlayers: 6,
-    mapPackage: createMapPackage(currentMapData, "Built-in test map")
+    mapPackage: createMapPackage(currentMapData, DEFAULT_MAP_NAME)
   })) {
     setStartStatus("서버에 방 생성을 요청했습니다.");
     return;
@@ -952,7 +955,7 @@ function createRoom() {
     createdAt: Date.now(),
     maxPlayers: 6,
     comCount: 1,
-    mapPackage: createMapPackage(currentMapData, "Built-in test map"),
+    mapPackage: createMapPackage(currentMapData, DEFAULT_MAP_NAME),
     players: [createRoomPlayer()]
   };
   room.slots = createDefaultRoomSlots(room);
@@ -1309,7 +1312,7 @@ function renderRoomList() {
     <li>
       <div>
         <strong>${room.id}</strong>
-        <span>${escapeHtml(room.players?.[0]?.nickname ?? "Host")} / ${room.players?.length ?? 0}/${room.maxPlayers} / COM ${room.comCount ?? 0} / ${escapeHtml(room.mapPackage?.name ?? "Built-in test map")}</span>
+        <span>${escapeHtml(room.players?.[0]?.nickname ?? "Host")} / ${room.players?.length ?? 0}/${room.maxPlayers} / COM ${room.comCount ?? 0} / ${escapeHtml(room.mapPackage?.name ?? DEFAULT_MAP_NAME)}</span>
       </div>
       <button type="button" data-room-id="${room.id}">입장</button>
     </li>
@@ -1367,13 +1370,13 @@ function areHumanPlayersReady(room = lobbySession.currentRoom) {
 }
 
 function renderRoomMapPanel(room) {
-  const mapPackage = room?.mapPackage ?? createMapPackage(currentMapData, "Built-in test map");
+  const mapPackage = room?.mapPackage ?? createMapPackage(currentMapData, DEFAULT_MAP_NAME);
   const cachedData = getRoomMapData(mapPackage);
   const tileCount = cachedData?.tiles?.filter((tile) => tile.enabled !== false).length ?? mapPackage.tileCount ?? 0;
   const hasBackground = Boolean(cachedData?.backgroundImage || mapPackage.hasBackground);
 
   if (roomMapName) {
-    roomMapName.textContent = mapPackage.name ?? mapPackage.mapId ?? "Built-in test map";
+    roomMapName.textContent = mapPackage.name ?? mapPackage.mapId ?? DEFAULT_MAP_NAME;
   }
   if (roomMapMeta) {
     roomMapMeta.textContent = `${mapPackage.mapId ?? "unknown"} | tiles ${tileCount} | background ${hasBackground ? "included" : "none"}`;
