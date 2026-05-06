@@ -52,6 +52,7 @@ const stashValue = document.querySelector("#stashValue");
 const bagList = document.querySelector("#bagList");
 const actionLog = document.querySelector("#actionLog");
 const opponentTurnOverlay = document.querySelector("#opponentTurnOverlay");
+const bodyHpHud = document.querySelector("#bodyHpHud");
 const bodyHp = document.querySelector("#bodyHp");
 const diceResults = document.querySelector("#diceResults");
 const targetHp = document.querySelector("#targetHp");
@@ -191,6 +192,12 @@ const playedAttackRevealVersions = new Set();
 const playedEventRevealVersions = new Set();
 const processedRemoteCommandIds = new Set();
 let presenceHeartbeatTimer = 0;
+const loadoutDragState = {
+  dragging: false,
+  pointerId: null,
+  offsetX: 0,
+  offsetY: 0
+};
 
 const ORDER_CARD_IMAGES = Object.fromEntries(
   Array.from({ length: 8 }, (_, index) => {
@@ -791,6 +798,7 @@ function bindLobbyEvents() {
     void restartGameFromSummary();
   });
   returnLobbyButton?.addEventListener("click", returnToLobbyFromGame);
+  bindLoadoutDrag();
 }
 
 function restoreLobbySession() {
@@ -3119,6 +3127,74 @@ function refreshTabUnreadClasses() {
 function closeDrawer() {
   playDrawerCloseSfx(activeDrawerTab);
   loadoutPanel.classList.add("is-minimized");
+}
+
+function bindLoadoutDrag() {
+  if (!loadoutHeader || !loadoutPanel || loadoutHeader.dataset.dragBound === "true") {
+    return;
+  }
+
+  loadoutHeader.dataset.dragBound = "true";
+  loadoutHeader.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0 && event.pointerType !== "touch") {
+      return;
+    }
+
+    const rect = loadoutPanel.getBoundingClientRect();
+    loadoutDragState.dragging = true;
+    loadoutDragState.pointerId = event.pointerId;
+    loadoutDragState.offsetX = event.clientX - rect.left;
+    loadoutDragState.offsetY = event.clientY - rect.top;
+    loadoutPanel.classList.add("is-dragging");
+    loadoutHeader.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  }, { passive: false });
+
+  loadoutHeader.addEventListener("pointermove", (event) => {
+    if (!loadoutDragState.dragging || loadoutDragState.pointerId !== event.pointerId) {
+      return;
+    }
+
+    moveLoadoutPanel(event.clientX - loadoutDragState.offsetX, event.clientY - loadoutDragState.offsetY);
+    event.preventDefault();
+  }, { passive: false });
+
+  const stopDrag = (event) => {
+    if (loadoutDragState.pointerId !== event.pointerId) {
+      return;
+    }
+
+    loadoutDragState.dragging = false;
+    loadoutDragState.pointerId = null;
+    loadoutPanel.classList.remove("is-dragging");
+    keepLoadoutPanelInViewport();
+  };
+
+  loadoutHeader.addEventListener("pointerup", stopDrag);
+  loadoutHeader.addEventListener("pointercancel", stopDrag);
+  window.addEventListener("resize", keepLoadoutPanelInViewport);
+}
+
+function moveLoadoutPanel(left, top) {
+  const rect = loadoutPanel.getBoundingClientRect();
+  const maxLeft = Math.max(0, window.innerWidth - rect.width - 8);
+  const maxTop = Math.max(0, window.innerHeight - Math.min(rect.height, window.innerHeight - 16) - 8);
+  const nextLeft = Math.max(8, Math.min(maxLeft, left));
+  const nextTop = Math.max(8, Math.min(maxTop, top));
+
+  loadoutPanel.style.left = `${nextLeft}px`;
+  loadoutPanel.style.top = `${nextTop}px`;
+  loadoutPanel.style.right = "auto";
+  loadoutPanel.style.bottom = "auto";
+}
+
+function keepLoadoutPanelInViewport() {
+  if (!loadoutPanel || loadoutPanel.classList.contains("is-minimized")) {
+    return;
+  }
+
+  const rect = loadoutPanel.getBoundingClientRect();
+  moveLoadoutPanel(rect.left, rect.top);
 }
 
 function renderSoundSettings() {
@@ -6049,8 +6125,9 @@ function ensureSelectOption(select, value, label) {
 function renderBodyHp() {
   const maxHp = playerTemplate.bodyHp;
   const player = getUiPlayer();
+  const entries = Object.entries(player.bodyHp);
 
-  bodyHp.innerHTML = Object.entries(player.bodyHp)
+  bodyHp.innerHTML = entries
     .map(([part, value]) => {
       const percent = Math.max(0, Math.min(100, (value / maxHp[part]) * 100));
       return `
@@ -6062,6 +6139,25 @@ function renderBodyHp() {
       `;
     })
     .join("");
+
+  if (bodyHpHud) {
+    bodyHpHud.innerHTML = entries
+      .map(([part, value]) => {
+        const max = maxHp[part] ?? 1;
+        const percent = Math.max(0, Math.min(100, (value / max) * 100));
+        const damagePercent = 100 - percent;
+        return `
+          <div class="body-hp-hud-row ${value <= 0 ? "is-zero" : ""}">
+            <span>${bodyPartLabel(part)}</span>
+            <div class="body-hp-hud-bar" aria-label="${bodyPartLabel(part)} ${value}/${max}">
+              <div class="body-hp-hud-damage" style="width: ${damagePercent}%"></div>
+            </div>
+            <strong>${value}</strong>
+          </div>
+        `;
+      })
+      .join("");
+  }
 }
 
 function renderRaidLog() {
