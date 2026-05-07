@@ -3150,8 +3150,24 @@ dd {
     left: 8px;
     bottom: max(8px, env(safe-area-inset-bottom));
     width: auto;
+    min-width: 0;
     max-height: calc(100dvh - 22px);
     overflow: auto;
+  }
+
+  .loadout-panel.is-system-tab,
+  .loadout-panel.is-bag-tab {
+    width: auto;
+  }
+
+  .drawer-pane.is-active[data-pane="other"],
+  .drawer-pane.is-active[data-pane="event"] {
+    max-height: calc(100dvh - 92px);
+  }
+
+  .drawer-pane-content {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 12px;
   }
 
   .loadout-content {

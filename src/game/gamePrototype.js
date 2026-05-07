@@ -3422,6 +3422,7 @@ function toggleDrawer(tab) {
   if (loadoutPanel.classList.contains("is-minimized")) {
     playDrawerOpenSfx(tab);
     setDrawerTab(tab);
+    normalizeLoadoutPanelForViewport();
     loadoutPanel.classList.remove("is-minimized");
     requestAnimationFrame(keepLoadoutPanelInViewport);
     return;
@@ -3434,6 +3435,23 @@ function toggleDrawer(tab) {
 
   playDrawerOpenSfx(tab);
   setDrawerTab(tab);
+  normalizeLoadoutPanelForViewport();
+}
+
+function normalizeLoadoutPanelForViewport() {
+  if (!loadoutPanel || !isMobileLayout()) {
+    return;
+  }
+
+  loadoutPanel.style.left = "";
+  loadoutPanel.style.top = "";
+  loadoutPanel.style.right = "";
+  loadoutPanel.style.bottom = "";
+  loadoutPanel.style.maxHeight = "";
+}
+
+function isMobileLayout() {
+  return window.matchMedia?.("(max-width: 920px)")?.matches ?? window.innerWidth <= 920;
 }
 
 function setTabUnread(tab, unread = true) {
@@ -4273,6 +4291,11 @@ function moveLoadoutPanel(left, top) {
 
 function keepLoadoutPanelInViewport() {
   if (!loadoutPanel || loadoutPanel.classList.contains("is-minimized")) {
+    return;
+  }
+
+  if (isMobileLayout()) {
+    normalizeLoadoutPanelForViewport();
     return;
   }
 
