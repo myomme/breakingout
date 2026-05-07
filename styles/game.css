@@ -198,6 +198,29 @@ body {
   letter-spacing: 0.08em;
 }
 
+.account-summary-chip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+  margin-left: auto;
+}
+
+.account-summary-chip span {
+  border: 1px solid rgba(185, 232, 109, 0.18);
+  border-radius: 999px;
+  background: rgba(185, 232, 109, 0.08);
+  color: rgba(231, 238, 224, 0.76);
+  padding: 5px 8px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.account-summary-chip b {
+  color: #e7f6c4;
+  font-weight: 950;
+}
+
 .lobby-actions {
   display: grid;
   grid-template-columns: minmax(130px, auto) minmax(0, 1fr) minmax(130px, auto);
@@ -2732,6 +2755,16 @@ dd {
   .lobby-player-strip strong,
   .room-header strong {
     font-size: 18px;
+  }
+
+  .account-summary-chip {
+    justify-content: flex-start;
+    margin-left: 0;
+  }
+
+  .account-summary-chip span {
+    font-size: 10px;
+    padding: 5px 7px;
   }
 
   .lobby-actions {

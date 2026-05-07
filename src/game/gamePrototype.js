@@ -195,6 +195,7 @@ const ROOM_STORAGE_KEY = "breakingOutPrototypeRooms";
 const LOCAL_PLAYER_STORAGE_KEY = "breakingOutPrototypePlayer";
 const SESSION_PLAYER_ID_KEY = "breakingOutPrototypeSessionPlayerId";
 const SESSION_ROOM_ID_KEY = "breakingOutPrototypeSessionRoomId";
+const ACCOUNT_STORAGE_PREFIX = "breakingOutPrototypeAccount:";
 const ROOM_SYNC_CHANNEL = "breakingOutPrototypeRoomSync";
 const GAME_STATE_STORAGE_PREFIX = "breakingOutPrototypeGameState:";
 const PLAYER_COMMAND_STORAGE_PREFIX = "breakingOutPrototypePlayerCommand:";
@@ -222,6 +223,7 @@ const chatMessages = [];
 const seenChatMessageIds = new Set();
 let unreadGameChatCount = 0;
 const clearedChatRoomIds = new Set();
+const appliedAccountResultKeys = new Set();
 let beginnerHelpEnabled = true;
 let beginnerHelpOpen = false;
 let beginnerHelpStepIndex = 0;
@@ -1060,6 +1062,9 @@ function enterLobby() {
   }
 
   lobbySession.nickname = nickname;
+  const account = readAccountRecord();
+  account.nickname = nickname;
+  writeAccountRecord(account);
   showLobbyStep("lobby");
   renderLobby();
   setStartStatus("방을 만들거나 방 번호로 입장하세요.");
@@ -1453,9 +1458,35 @@ function renderLobby() {
   if (lobbyNickname) {
     lobbyNickname.textContent = lobbySession.nickname || "-";
   }
+  renderAccountSummary();
   renderRoomList();
   renderRoomPanel();
   renderSessionChat();
+}
+
+function renderAccountSummary() {
+  const strip = document.querySelector(".lobby-player-strip");
+  if (!strip || !lobbySession.localPlayerId) {
+    return;
+  }
+
+  let summary = strip.querySelector(".account-summary-chip");
+  if (!summary) {
+    summary = document.createElement("div");
+    summary.className = "account-summary-chip";
+    strip.append(summary);
+  }
+
+  const account = readAccountRecord();
+  summary.innerHTML = `
+    <span>누적 가치 <b>${formatValue(account.wallet.lifetimeLootValue)}</b></span>
+    <span>보유 가치 <b>${formatValue(account.wallet.spendableValue)}</b></span>
+    <span>전적 <b>${account.stats.wins}/${account.stats.gamesCompleted}</b></span>
+  `;
+}
+
+function formatValue(value) {
+  return Number(value ?? 0).toLocaleString("ko-KR");
 }
 
 function renderRoomList() {
@@ -1903,6 +1934,72 @@ function writeJsonStorage(key, value) {
   } catch {
     // Local storage can be unavailable in some browser privacy modes.
   }
+}
+
+function getAccountStorageKey() {
+  return `${ACCOUNT_STORAGE_PREFIX}${lobbySession.localPlayerId}`;
+}
+
+function createDefaultAccountRecord() {
+  return {
+    accountId: lobbySession.localPlayerId,
+    nickname: lobbySession.nickname || "",
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    wallet: {
+      lifetimeLootValue: 0,
+      spendableValue: 0,
+      spentValue: 0
+    },
+    stats: {
+      gamesPlayed: 0,
+      gamesCompleted: 0,
+      wins: 0,
+      kills: 0,
+      deaths: 0,
+      bestGameValue: 0
+    },
+    cosmetics: {
+      equipped: {
+        nameplate: "default",
+        chatBubble: "default",
+        tokenSkin: "default",
+        title: "default"
+      },
+      owned: ["default"]
+    },
+    lastGame: null,
+    appliedGameResults: []
+  };
+}
+
+function readAccountRecord() {
+  const saved = readJsonStorage(getAccountStorageKey(), null);
+  return {
+    ...createDefaultAccountRecord(),
+    ...(saved ?? {}),
+    wallet: {
+      ...createDefaultAccountRecord().wallet,
+      ...(saved?.wallet ?? {})
+    },
+    stats: {
+      ...createDefaultAccountRecord().stats,
+      ...(saved?.stats ?? {})
+    },
+    cosmetics: {
+      ...createDefaultAccountRecord().cosmetics,
+      ...(saved?.cosmetics ?? {})
+    },
+    appliedGameResults: Array.isArray(saved?.appliedGameResults) ? saved.appliedGameResults : []
+  };
+}
+
+function writeAccountRecord(account) {
+  writeJsonStorage(getAccountStorageKey(), {
+    ...account,
+    nickname: lobbySession.nickname || account.nickname,
+    updatedAt: Date.now()
+  });
 }
 
 function initRoomSync() {
@@ -6560,6 +6657,7 @@ function renderGameSummaryOverlay() {
   }
 
   const summary = state.getGameSummary();
+  applyGameSummaryToAccount(summary);
   const winnerText = summary.winners.length > 1
     ? `공동 승리: ${summary.winners.map((winner) => winner.name).join(", ")}`
     : `승리자: ${summary.winners[0]?.name ?? "-"}`;
@@ -6588,6 +6686,52 @@ function renderGameSummaryOverlay() {
   ]);
 
   clearSessionChatOnGameEnd();
+}
+
+function applyGameSummaryToAccount(summary) {
+  const localPlayer = getUiPlayer();
+  if (!localPlayer || !summary?.standings?.length) {
+    return;
+  }
+
+  const roomId = lobbySession.currentRoom?.id ?? "solo";
+  const resultKey = `${roomId}:${localPlayer.id}:${summary.standings.map((entry) => `${entry.id ?? entry.name}:${entry.score}`).join("|")}`;
+  const account = readAccountRecord();
+  if (appliedAccountResultKeys.has(resultKey) || account.appliedGameResults?.includes(resultKey)) {
+    return;
+  }
+
+  const standing = summary.standings.find((entry) => entry.id === localPlayer.id || entry.name === localPlayer.name);
+  if (!standing) {
+    return;
+  }
+
+  appliedAccountResultKeys.add(resultKey);
+  const confirmedValue = Math.max(0, Number(standing.score ?? 0));
+  const localKills = (state.killLog ?? []).filter((entry) => entry.killerId === localPlayer.id || entry.killerName === localPlayer.name).length;
+  const winner = summary.winners.some((entry) => entry.id === localPlayer.id || entry.name === localPlayer.name);
+
+  account.wallet.lifetimeLootValue += confirmedValue;
+  account.wallet.spendableValue += confirmedValue;
+  account.stats.gamesPlayed += 1;
+  account.stats.gamesCompleted += 1;
+  account.stats.wins += winner ? 1 : 0;
+  account.stats.kills += localKills;
+  account.stats.deaths += localPlayer.dead ? 1 : 0;
+  account.stats.bestGameValue = Math.max(account.stats.bestGameValue ?? 0, confirmedValue);
+  account.lastGame = {
+    at: Date.now(),
+    roomId,
+    mapId: state.gameMap?.mapId ?? null,
+    value: confirmedValue,
+    winner,
+    kills: localKills,
+    dead: Boolean(localPlayer.dead),
+    finalRaidExtracted: Boolean(localPlayer.extractedThisRaid)
+  };
+  account.appliedGameResults = [...(account.appliedGameResults ?? []), resultKey].slice(-20);
+  writeAccountRecord(account);
+  renderAccountSummary();
 }
 
 function clearSessionChatOnGameEnd() {
