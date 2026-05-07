@@ -157,11 +157,9 @@ let eventCardPreview = null;
 let eventHoldList = null;
 let eventDebugSelect = null;
 let eventDebugRun = null;
-let soundSettingsList = null;
 let cosmeticShopList = null;
-let simulationRunCount = null;
-let simulationRunButton = null;
-let simulationOutput = null;
+let cosmeticShopOverlay = null;
+let cosmeticShopClose = null;
 let beginnerHelpPanel = null;
 let beginnerHelpTitle = null;
 let beginnerHelpBody = null;
@@ -181,7 +179,6 @@ const queuedSounds = [];
 let gameStarted = false;
 let gameStarting = false;
 let gameBootstrapped = false;
-let simulationRunning = false;
 let lobbySession = createEmptyLobbySession();
 let corpseLootSession = null;
 let corpseLootTimerInterval = 0;
@@ -427,34 +424,6 @@ const SOUND_SETTINGS = {
   voGameEnd: 100
 };
 
-const SOUND_SETTING_DEFS = [
-  { key: "master", label: "Master" },
-  { key: "gameStart", label: "Game Start" },
-  { key: "pageUp", label: "Tab Open" },
-  { key: "backpackOpen", label: "Backpack Open" },
-  { key: "backpackClose", label: "Backpack Close" },
-  { key: "cardDraw", label: "Card Draw" },
-  { key: "cardFlick", label: "Card Flick" },
-  { key: "drawerOpen", label: "Loot Open" },
-  { key: "drawerClose", label: "Loot Close" },
-  { key: "pieceTap", label: "Piece Tap" },
-  { key: "diceRoll1", label: "Dice Roll 1" },
-  { key: "diceRoll2", label: "Dice Roll 2" },
-  { key: "AR", label: "AR Shot" },
-  { key: "SMG", label: "SMG Shot" },
-  { key: "SR", label: "SR Shot" },
-  { key: "DMR", label: "DMR Shot" },
-  { key: "hit", label: "Hit Impact" },
-  { key: "ticktock", label: "Countdown Tick" },
-  { key: "switchOff", label: "Turn Switch" },
-  { key: "commonLoot", label: "Common Loot" },
-  { key: "goldLoot", label: "Gold Loot" },
-  { key: "voRaidStart", label: "VO Raid Start" },
-  { key: "voRaidMid", label: "VO Raid Mid" },
-  { key: "voRaidEnd", label: "VO Raid End" },
-  { key: "voGameEnd", label: "VO Game End" }
-];
-
 const SOUND_URL_TO_KEY = Object.fromEntries(
   Object.entries(SOUND_URLS).map(([key, value]) => [value, key])
 );
@@ -561,6 +530,7 @@ function initStartOverlay() {
   initRoomSync();
   initServerSync();
   startPresenceHeartbeat();
+  ensureLobbyShopUi();
   bindLobbyEvents();
   startGameButton.addEventListener("click", handleStartGame);
   bootstrap().catch((error) => {
@@ -1614,9 +1584,15 @@ function renderAccountProfileCard(account = readAccountRecord()) {
           <dd>${formatValue(account.stats.bestGameValue)}</dd>
         </div>
       </dl>
+      <div class="account-profile-actions">
+        <button class="account-shop-open" type="button">상점 열기</button>
+        <button class="account-debug-grant" type="button">디버그 +500</button>
+      </div>
       <p class="account-profile-last">최근 게임: ${escapeHtml(lastGameText)}</p>
     `;
   });
+
+  bindAccountProfileActions();
 }
 
 function getCosmeticLabel(id) {
@@ -1639,6 +1615,24 @@ function applyLocalCosmeticsToPlayers() {
     }
   });
   renderer?.requestRender?.();
+}
+
+function bindAccountProfileActions() {
+  document.querySelectorAll(".account-shop-open").forEach((button) => {
+    if (button.dataset.bound === "true") {
+      return;
+    }
+    button.addEventListener("click", openCosmeticShopModal);
+    button.dataset.bound = "true";
+  });
+
+  document.querySelectorAll(".account-debug-grant").forEach((button) => {
+    if (button.dataset.bound === "true") {
+      return;
+    }
+    button.addEventListener("click", () => sendDebugGrantValue(500));
+    button.dataset.bound = "true";
+  });
 }
 
 function renderRoomList() {
@@ -2153,6 +2147,53 @@ function writeAccountRecord(account) {
     nickname: lobbySession.nickname || account.nickname,
     updatedAt: Date.now()
   });
+}
+
+function ensureLobbyShopUi() {
+  if (document.querySelector("#cosmeticShopOverlay")) {
+    cosmeticShopOverlay = document.querySelector("#cosmeticShopOverlay");
+    cosmeticShopList = document.querySelector("#cosmeticShopList");
+    cosmeticShopClose = document.querySelector("#cosmeticShopClose");
+    return;
+  }
+
+  cosmeticShopOverlay = document.createElement("div");
+  cosmeticShopOverlay.id = "cosmeticShopOverlay";
+  cosmeticShopOverlay.className = "cosmetic-shop-overlay";
+  cosmeticShopOverlay.hidden = true;
+  cosmeticShopOverlay.innerHTML = `
+    <div class="cosmetic-shop-backdrop"></div>
+    <section class="cosmetic-shop-panel" role="dialog" aria-modal="true" aria-labelledby="cosmeticShopTitle">
+      <header class="cosmetic-shop-header">
+        <div>
+          <span>Account Shop</span>
+          <h2 id="cosmeticShopTitle">코스메틱 상점</h2>
+        </div>
+        <button id="cosmeticShopClose" class="icon-button" type="button" aria-label="상점 닫기">-</button>
+      </header>
+      <p class="cosmetic-shop-note">밸런스에 영향을 주지 않는 이름표, 채팅 말풍선, 말 스킨, 칭호만 판매합니다.</p>
+      <div id="cosmeticShopList" class="cosmetic-shop-list"></div>
+    </section>
+  `;
+  document.body.append(cosmeticShopOverlay);
+  cosmeticShopList = cosmeticShopOverlay.querySelector("#cosmeticShopList");
+  cosmeticShopClose = cosmeticShopOverlay.querySelector("#cosmeticShopClose");
+  cosmeticShopClose?.addEventListener("click", closeCosmeticShopModal);
+  cosmeticShopOverlay.querySelector(".cosmetic-shop-backdrop")?.addEventListener("click", closeCosmeticShopModal);
+}
+
+function openCosmeticShopModal() {
+  ensureLobbyShopUi();
+  renderCosmeticShop();
+  if (cosmeticShopOverlay) {
+    cosmeticShopOverlay.hidden = false;
+  }
+}
+
+function closeCosmeticShopModal() {
+  if (cosmeticShopOverlay) {
+    cosmeticShopOverlay.hidden = true;
+  }
 }
 
 function handleServerAccountUpdated(account) {
@@ -3266,7 +3307,12 @@ function bindEvents() {
   tabEquipment?.addEventListener("click", () => toggleDrawer("equipment"));
   tabBag?.addEventListener("click", () => toggleDrawer("bag"));
   tabEvent?.addEventListener("click", () => toggleDrawer("event"));
-  tabOther?.addEventListener("click", () => toggleDrawer("other"));
+  if (tabOther) {
+    tabOther.disabled = true;
+    tabOther.classList.add("is-disabled");
+    tabOther.setAttribute("aria-disabled", "true");
+    tabOther.title = "기타 탭은 현재 비활성화되어 있습니다.";
+  }
   comPlayerCount?.addEventListener("change", () => {
     syncRoomSettingsFromUi();
     renderComLoadoutSettings();
@@ -3502,14 +3548,6 @@ function setupDrawerPanes() {
   otherPane.dataset.pane = "other";
   otherPane.innerHTML = `
     <div class="drawer-pane-content">
-      <section class="drawer-card cosmetic-shop-card">
-        <div class="loadout-section-title">
-          <h3>코스메틱 상점</h3>
-          <span class="loadout-count">No P2W</span>
-        </div>
-        <p class="weapon-passive">루팅 가치로 밸런스에 영향을 주지 않는 이름표, 채팅, 말 스킨, 칭호를 구매하고 장착합니다.</p>
-        <div id="cosmeticShopList" class="cosmetic-shop-list"></div>
-      </section>
       <section class="drawer-card beginner-help-card">
         <div class="loadout-section-title">
           <h3>초보자 도움말</h3>
@@ -3521,28 +3559,6 @@ function setupDrawerPanes() {
           <input id="beginnerHelpSwitch" type="checkbox">
         </label>
         <button id="beginnerHelpToggle" class="beginner-help-open" type="button">도움말 다시 보기</button>
-      </section>
-      <section class="drawer-card">
-        <div class="loadout-section-title">
-          <h3>System Audio</h3>
-          <span class="loadout-count">Live Mix</span>
-        </div>
-        <p class="weapon-passive">Adjust each sound in real time and note the percentages you want to keep.</p>
-        <div id="soundSettingsList" class="sound-settings-list"></div>
-      </section>
-      <section class="drawer-card simulation-card">
-        <div class="loadout-section-title">
-          <h3>COM Simulation</h3>
-          <span class="loadout-count">Balance Lab</span>
-        </div>
-        <div class="simulation-controls">
-          <label class="simulation-field">
-            <span>Runs</span>
-            <input id="simulationRunCount" type="number" min="1" max="500" step="1" value="50">
-          </label>
-          <button id="simulationRunButton" type="button">Run COM Test</button>
-        </div>
-        <pre id="simulationOutput" class="simulation-output">No simulation data yet.</pre>
       </section>
     </div>
   `;
@@ -3560,11 +3576,6 @@ function setupDrawerPanes() {
   eventDebugRun = document.querySelector("#eventDebugRun");
   beginnerHelpToggle = document.querySelector("#beginnerHelpToggle");
   beginnerHelpSwitch = document.querySelector("#beginnerHelpSwitch");
-  soundSettingsList = document.querySelector("#soundSettingsList");
-  cosmeticShopList = document.querySelector("#cosmeticShopList");
-  simulationRunCount = document.querySelector("#simulationRunCount");
-  simulationRunButton = document.querySelector("#simulationRunButton");
-  simulationOutput = document.querySelector("#simulationOutput");
 
   if (eventDebugRun && eventDebugRun.dataset.bound !== "true") {
     eventDebugRun.addEventListener("click", () => {
@@ -3591,10 +3602,6 @@ function setupDrawerPanes() {
 
   loadoutPanel.dataset.tabsReady = "true";
   populateEventDebugSelect();
-  renderSoundSettings();
-  renderCosmeticShop();
-  bindSoundSettings();
-  bindSimulationControls();
   bindBeginnerHelpControls();
 }
 
@@ -3615,8 +3622,7 @@ function setDrawerTab(tab) {
     loadoutSubtitle.textContent = "Review the current event and held cards";
   } else {
     loadoutTitle.textContent = "기타";
-    loadoutSubtitle.textContent = "도움말, 사운드, 테스트 설정";
-    renderCosmeticShop();
+    loadoutSubtitle.textContent = "현재 비활성화";
   }
 
   loadoutPanel.querySelectorAll(".drawer-pane").forEach((pane) => {
@@ -4523,62 +4529,6 @@ function keepLoadoutPanelInViewport() {
   moveLoadoutPanel(rect.left, rect.top);
 }
 
-function renderSoundSettings() {
-  if (!soundSettingsList) {
-    return;
-  }
-
-  soundSettingsList.innerHTML = SOUND_SETTING_DEFS.map((setting) => `
-    <label class="sound-setting-row" for="sound-${setting.key}">
-      <span class="sound-setting-label">${setting.label}</span>
-      <input
-        id="sound-${setting.key}"
-        class="sound-setting-slider"
-        type="range"
-        min="0"
-        max="150"
-        step="1"
-        value="${SOUND_SETTINGS[setting.key]}"
-        data-sound-key="${setting.key}"
-      >
-      <span class="sound-setting-value" data-sound-value="${setting.key}">${SOUND_SETTINGS[setting.key]}%</span>
-    </label>
-  `).join("");
-}
-
-function bindSoundSettings() {
-  if (!soundSettingsList || soundSettingsList.dataset.bound === "true") {
-    return;
-  }
-
-  const syncSoundSetting = (input) => {
-    const key = input.dataset.soundKey;
-
-    if (!key || !(key in SOUND_SETTINGS)) {
-      return;
-    }
-
-    SOUND_SETTINGS[key] = Number(input.value);
-    const valueNode = soundSettingsList.querySelector(`[data-sound-value="${key}"]`);
-
-    if (valueNode) {
-      valueNode.textContent = `${SOUND_SETTINGS[key]}%`;
-    }
-  };
-
-  soundSettingsList.addEventListener("input", (event) => {
-    const input = event.target.closest("input[data-sound-key]");
-
-    if (!input) {
-      return;
-    }
-
-    syncSoundSetting(input);
-  });
-
-  soundSettingsList.dataset.bound = "true";
-}
-
 function renderCosmeticShop() {
   if (!cosmeticShopList) {
     return;
@@ -4649,432 +4599,17 @@ function sendCosmeticAction(action, itemId) {
   setStartStatus(ok ? `${item.label} 요청을 서버에 전송했습니다.` : "서버 연결 후 상점을 사용할 수 있습니다.");
 }
 
-function bindSimulationControls() {
-  if (!simulationRunButton || simulationRunButton.dataset.bound === "true") {
-    return;
-  }
-
-  simulationRunButton.addEventListener("click", () => {
-    void runComSimulationFromUi();
-  });
-  simulationRunButton.dataset.bound = "true";
-}
-
-async function runComSimulationFromUi() {
-  if (simulationRunning) {
-    return;
-  }
-
-  if (!gameBootstrapped) {
-    await bootstrap();
-  }
-
-  const runs = Math.max(1, Math.min(500, Number(simulationRunCount?.value ?? 50)));
-  const liveState = state;
-  simulationRunning = true;
-  simulationRunButton.disabled = true;
-  simulationOutput.textContent = `Running ${runs} COM simulation(s)...`;
-
-  const stats = createSimulationStats(runs);
-
-  try {
-    for (let runIndex = 0; runIndex < runs; runIndex += 1) {
-      const simState = createComSimulationState();
-      runSingleComSimulation(simState, stats, runIndex + 1);
-
-      if ((runIndex + 1) % 10 === 0 || runIndex === runs - 1) {
-        simulationOutput.textContent = formatSimulationSummary(stats, runIndex + 1);
-        await wait(0);
-      }
-    }
-  } finally {
-    state = liveState;
-    simulationRunning = false;
-    simulationRunButton.disabled = false;
-    simulationOutput.textContent = formatSimulationSummary(stats, runs);
-  }
-}
-
-function createComSimulationState() {
-  const simMapData = cloneData(currentMapData ?? state.gameMap);
-  const simState = new RaidGameState({
-    mapData: simMapData,
-    playerTemplate,
-    lootTables,
-    weapons,
-    dice,
-    armor,
-    events,
-    aiCount: Math.max(1, getConfiguredAiCount()),
-    playerLoadouts: getConfiguredPlayerLoadouts()
+function sendDebugGrantValue(amount = 500) {
+  const ok = sendServerMessage({
+    type: "accountAction",
+    action: "debugGrantValue",
+    amount,
+    sourceId: lobbySession.localPlayerId,
+    nickname: lobbySession.nickname,
+    at: Date.now()
   });
 
-  normalizeSimulationPlayers(simState);
-
-  return simState;
-}
-
-function normalizeSimulationPlayers(simState) {
-  simState.players.forEach((player, index) => {
-    player.isAi = true;
-    player.name = `SIM COM ${index + 1}`;
-    player.aiProfile = getAiProfileId(index + 1);
-  });
-}
-
-function cloneData(value) {
-  if (typeof structuredClone === "function") {
-    return structuredClone(value);
-  }
-
-  return JSON.parse(JSON.stringify(value));
-}
-
-function createSimulationStats(runs) {
-  return {
-    runs,
-    completedRuns: 0,
-    raids: 0,
-    turns: 0,
-    actions: 0,
-    moves: 0,
-    movedTiles: 0,
-    attacks: 0,
-    damage: 0,
-    kills: 0,
-    loots: 0,
-    lootValue: 0,
-    escapes: 0,
-    deaths: 0,
-    phaseMovement: new Map(),
-    raidBreakdown: new Map(),
-    playerTotals: new Map(),
-    sampleLog: []
-  };
-}
-
-function runSingleComSimulation(simState, stats, runNumber) {
-  const liveState = state;
-  state = simState;
-
-  try {
-    let guard = 0;
-
-    while (guard < 5000) {
-      guard += 1;
-
-      if (simState.raidEnded) {
-        recordSimulationRaid(simState, stats, runNumber);
-
-        if (simState.raid >= 3) {
-          recordSimulationRunScores(simState, stats);
-          stats.completedRuns += 1;
-          break;
-        }
-
-        simState.startNextRaid();
-        normalizeSimulationPlayers(simState);
-        continue;
-      }
-
-      simulateComTurn(simState, stats, runNumber);
-    }
-  } finally {
-    state = liveState;
-  }
-}
-
-function simulateComTurn(simState, stats, runNumber) {
-  const actor = simState.player;
-
-  if (!actor || !simState.isPlayerActive(actor)) {
-    simState.endTurn();
-    return;
-  }
-
-  stats.turns += 1;
-  ensureSimulationPlayerStats(stats, actor);
-  let guard = 0;
-
-  while (simState.player?.id === actor.id && simState.isPlayerActive(actor) && !simState.raidEnded && guard < 8) {
-    guard += 1;
-    const action = chooseSimulationAction(simState, actor);
-
-    if (!action) {
-      simState.endTurn();
-      return;
-    }
-
-    applySimulationAction(simState, stats, runNumber, actor, action);
-
-    if (simState.raidEnded || simState.player?.id !== actor.id) {
-      return;
-    }
-
-    if (simState.getAvailableStamina() <= 0 || simState.actionLocked) {
-      simState.endTurn();
-      return;
-    }
-  }
-
-  if (!simState.raidEnded && simState.player?.id === actor.id) {
-    simState.endTurn();
-  }
-}
-
-function chooseSimulationAction(simState, actor) {
-  const opponents = getAiOpponents(actor);
-
-  if (shouldAiExtract(actor, opponents)) {
-    if (simState.canPlayerExtractFromTile(actor, simState.currentTile)) {
-      return { type: "extract" };
-    }
-
-    const extractionPlan = chooseAiGoalPlan(simState.getExtractionTilesForPlayer(actor));
-
-    if (extractionPlan?.moveTile) {
-      return { type: "move", tile: extractionPlan.moveTile, reason: "extract" };
-    }
-  }
-
-  const attackPlan = chooseAiAttackPlan(actor, opponents);
-
-  if (attackPlan?.attackNow) {
-    return { type: "attack", target: attackPlan.target };
-  }
-
-  if (simState.canLoot() && shouldAiLootCurrentTile(actor, opponents)) {
-    return { type: "loot" };
-  }
-
-  if (attackPlan?.moveTile) {
-    return { type: "move", tile: attackPlan.moveTile, reason: "attack" };
-  }
-
-  const lootPlan = chooseAiLootPlan(actor, opponents);
-
-  if (lootPlan?.moveTile) {
-    return { type: "move", tile: lootPlan.moveTile, reason: "loot" };
-  }
-
-  if (simState.canLoot()) {
-    return { type: "loot" };
-  }
-
-  const fallbackExtraction = chooseAiGoalPlan(simState.getExtractionTilesForPlayer(actor));
-
-  if (fallbackExtraction?.moveTile) {
-    return { type: "move", tile: fallbackExtraction.moveTile, reason: "fallback" };
-  }
-
-  return null;
-}
-
-function applySimulationAction(simState, stats, runNumber, actor, action) {
-  stats.actions += 1;
-  const playerStats = ensureSimulationPlayerStats(stats, actor);
-
-  if (action.type === "extract") {
-    const beforeEscaped = actor.extractedThisRaid;
-    simState.endTurn();
-
-    if (!beforeEscaped && actor.extractedThisRaid) {
-      appendSimulationLog(stats, `R${runNumber}.${simState.raid} P${simState.phase}: ${actor.name} extracted value ${actor.bagValue}`);
-    }
-    return;
-  }
-
-  if (action.type === "move") {
-    const result = simState.movePlayer(action.tile);
-
-    if (result) {
-      const raidStats = ensureSimulationRaidStats(stats, simState.raid);
-      stats.moves += 1;
-      stats.movedTiles += result.distance;
-      raidStats.moves += 1;
-      raidStats.movedTiles += result.distance;
-      playerStats.moves += 1;
-      playerStats.movedTiles += result.distance;
-      addPhaseMovement(stats, simState.phase, result.distance);
-      appendSimulationLog(stats, `R${runNumber}.${simState.raid} P${simState.phase}: ${actor.name} moved ${result.distance} (${action.reason})`);
-    }
-    return;
-  }
-
-  if (action.type === "loot") {
-    const result = simState.lootCurrentTile();
-
-    if (result) {
-      const raidStats = ensureSimulationRaidStats(stats, simState.raid);
-      const items = result.items ?? [result];
-      const value = items.reduce((sum, item) => sum + (item.value ?? 0), 0);
-      stats.loots += items.length;
-      stats.lootValue += value;
-      raidStats.loots += items.length;
-      raidStats.lootValue += value;
-      playerStats.loots += items.length;
-      playerStats.lootValue += value;
-      appendSimulationLog(stats, `R${runNumber}.${simState.raid} P${simState.phase}: ${actor.name} looted ${items.map((item) => item.name).join(", ")} (${value})`);
-    }
-    return;
-  }
-
-  if (action.type === "attack") {
-    const target = action.target;
-    const targetWasAlive = target?.alive;
-    simState.selectTile(target.position);
-    const result = simState.attackSelectedEnemy();
-
-    if (result) {
-      const raidStats = ensureSimulationRaidStats(stats, simState.raid);
-      const damage = result.damageEvents.reduce((sum, event) => sum + event.damage, 0);
-      stats.attacks += 1;
-      stats.damage += damage;
-      raidStats.attacks += 1;
-      raidStats.damage += damage;
-      playerStats.attacks += 1;
-      playerStats.damage += damage;
-
-      if (targetWasAlive && target.dead) {
-        stats.kills += 1;
-        raidStats.kills += 1;
-        playerStats.kills += 1;
-      }
-
-      appendSimulationLog(stats, `R${runNumber}.${simState.raid} P${simState.phase}: ${actor.name} attacked ${target.name}, damage ${damage}`);
-      simState.endTurn();
-    }
-  }
-}
-
-function ensureSimulationPlayerStats(stats, player) {
-  if (!stats.playerTotals.has(player.id)) {
-    stats.playerTotals.set(player.id, {
-      name: player.name,
-      profile: getAiProfileLabel(player),
-      attacks: 0,
-      damage: 0,
-      kills: 0,
-      loots: 0,
-      lootValue: 0,
-      moves: 0,
-      movedTiles: 0,
-      escapes: 0,
-      deaths: 0,
-      score: 0
-    });
-  }
-
-  return stats.playerTotals.get(player.id);
-}
-
-function ensureSimulationRaidStats(stats, raid) {
-  if (!stats.raidBreakdown.has(raid)) {
-    stats.raidBreakdown.set(raid, {
-      raids: 0,
-      slots: 0,
-      moves: 0,
-      movedTiles: 0,
-      attacks: 0,
-      damage: 0,
-      kills: 0,
-      loots: 0,
-      lootValue: 0,
-      escapes: 0,
-      deaths: 0
-    });
-  }
-
-  return stats.raidBreakdown.get(raid);
-}
-
-function recordSimulationRaid(simState, stats, runNumber) {
-  stats.raids += 1;
-  const raidStats = ensureSimulationRaidStats(stats, simState.raid);
-  raidStats.raids += 1;
-  raidStats.slots += simState.players.length;
-
-  simState.players.forEach((player) => {
-    const playerStats = ensureSimulationPlayerStats(stats, player);
-
-    if (player.extractedThisRaid) {
-      stats.escapes += 1;
-      raidStats.escapes += 1;
-      playerStats.escapes += 1;
-    }
-
-    if (player.dead) {
-      stats.deaths += 1;
-      raidStats.deaths += 1;
-      playerStats.deaths += 1;
-    }
-  });
-
-  appendSimulationLog(stats, `R${runNumber}.${simState.raid}: raid ended ${simState.raidResult}`);
-}
-
-function recordSimulationRunScores(simState, stats) {
-  simState.players.forEach((player) => {
-    const playerStats = ensureSimulationPlayerStats(stats, player);
-    playerStats.score += simState.getPlayerScore(player);
-  });
-}
-
-function addPhaseMovement(stats, phase, distance) {
-  const current = stats.phaseMovement.get(phase) ?? { movedTiles: 0, moves: 0 };
-  current.movedTiles += distance;
-  current.moves += 1;
-  stats.phaseMovement.set(phase, current);
-}
-
-function appendSimulationLog(stats, message) {
-  if (stats.sampleLog.length >= 60) {
-    return;
-  }
-
-  stats.sampleLog.push(message);
-}
-
-function formatSimulationSummary(stats, completedRuns = stats.completedRuns) {
-  const playerCount = Math.max(1, stats.playerTotals.size);
-  const totalSlots = Math.max(1, stats.raids * playerCount);
-  const avg = (value, divisor) => (value / Math.max(1, divisor)).toFixed(2);
-  const phaseMovement = [...stats.phaseMovement.entries()]
-    .sort((a, b) => a[0] - b[0])
-    .map(([phase, entry]) => `P${phase}:${avg(entry.movedTiles, entry.moves)}`)
-    .join(" ");
-  const raidBreakdown = [...stats.raidBreakdown.entries()]
-    .sort((a, b) => a[0] - b[0])
-    .map(([raid, entry]) => {
-      const slots = Math.max(1, entry.slots);
-      return `Raid ${raid}: loot/run ${avg(entry.lootValue, completedRuns)}, dmg/run ${avg(entry.damage, completedRuns)}, escape ${Math.round(entry.escapes / slots * 100)}%, death ${Math.round(entry.deaths / slots * 100)}%, move ${avg(entry.movedTiles, entry.moves)}`;
-    })
-    .join("\n");
-  const players = [...stats.playerTotals.values()]
-    .map((entry) => {
-      return `${entry.name} [${entry.profile}] score ${avg(entry.score, Math.max(1, stats.raids))}, loot ${avg(entry.lootValue, completedRuns)}, dmg ${avg(entry.damage, completedRuns)}, escape ${Math.round(entry.escapes / Math.max(1, stats.raids) * 100)}%`;
-    })
-    .join("\n");
-
-  return [
-    `COM Simulation ${completedRuns}/${stats.runs} run(s)`,
-    `Raids: ${stats.raids}`,
-    `Actions: ${stats.actions} | Turns: ${stats.turns}`,
-    `Move avg tiles/action: ${avg(stats.movedTiles, stats.moves)}`,
-    `Loot avg value/run: ${avg(stats.lootValue, completedRuns)}`,
-    `Attack avg damage/run: ${avg(stats.damage, completedRuns)} | Kills: ${stats.kills}`,
-    `Escape rate: ${Math.round(stats.escapes / totalSlots * 100)}% | Death rate: ${Math.round(stats.deaths / totalSlots * 100)}%`,
-    `Phase move avg: ${phaseMovement || "-"}`,
-    "",
-    "By Raid",
-    raidBreakdown || "-",
-    "",
-    "By COM",
-    players || "-",
-    "",
-    "Sample Log",
-    stats.sampleLog.join("\n") || "-"
-  ].join("\n");
+  setStartStatus(ok ? `디버그 가치 +${formatValue(amount)} 요청을 서버에 전송했습니다.` : "서버 연결 후 디버그 지급을 사용할 수 있습니다.");
 }
 
 function populateEventDebugSelect() {

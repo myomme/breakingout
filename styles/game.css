@@ -291,8 +291,88 @@ body {
   font-weight: 950;
 }
 
+.account-profile-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.account-profile-actions button {
+  min-height: 36px;
+  border-color: rgba(185, 232, 109, 0.28);
+  background: rgba(185, 232, 109, 0.11);
+  color: #eef8d0;
+  font-size: 12px;
+  font-weight: 950;
+}
+
 .account-profile-last {
   margin: 0;
+}
+
+.cosmetic-shop-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+}
+
+.cosmetic-shop-overlay[hidden] {
+  display: none;
+}
+
+.cosmetic-shop-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(5, 8, 9, 0.74);
+  backdrop-filter: blur(8px);
+}
+
+.cosmetic-shop-panel {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 12px;
+  width: min(720px, calc(100vw - 28px));
+  max-height: min(760px, calc(100dvh - 28px));
+  overflow: auto;
+  border: 1px solid rgba(185, 232, 109, 0.22);
+  border-radius: 14px;
+  background:
+    linear-gradient(135deg, rgba(185, 232, 109, 0.08), transparent 34%),
+    rgba(12, 17, 16, 0.96);
+  padding: 16px;
+  color: #eef2e8;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.42);
+}
+
+.cosmetic-shop-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.cosmetic-shop-header span {
+  color: rgba(224, 214, 193, 0.7);
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.cosmetic-shop-header h2 {
+  margin: 2px 0 0;
+  color: #f8f2e5;
+  font-size: 24px;
+}
+
+.cosmetic-shop-note {
+  margin: 0;
+  color: rgba(224, 214, 193, 0.72);
+  font-size: 12px;
 }
 
 .lobby-actions {
@@ -2044,6 +2124,13 @@ dd {
   box-shadow: 0 -6px 18px rgba(12, 16, 15, 0.22);
 }
 
+.board-tab.is-disabled,
+.board-tab:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+  filter: grayscale(0.65);
+}
+
 .loadout-panel {
   position: fixed;
   top: 116px;
@@ -2303,10 +2390,6 @@ dd {
   min-height: 0;
 }
 
-.cosmetic-shop-card {
-  gap: 10px;
-}
-
 .cosmetic-shop-list {
   display: grid;
   gap: 8px;
@@ -2527,92 +2610,6 @@ dd {
   color: rgba(238, 242, 232, 0.86);
   font-size: 12px;
   line-height: 1.35;
-}
-
-.sound-settings-list {
-  display: grid;
-  gap: 8px;
-  max-height: none;
-}
-
-.sound-setting-row {
-  display: grid;
-  grid-template-columns: 108px minmax(0, 1fr) 44px;
-  align-items: center;
-  gap: 10px;
-  border-bottom: 1px solid rgba(132, 147, 138, 0.14);
-  padding-bottom: 8px;
-}
-
-.sound-setting-label {
-  color: rgba(241, 245, 236, 0.88);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.sound-setting-slider {
-  width: 100%;
-  accent-color: #b9e86d;
-}
-
-.sound-setting-value {
-  color: rgba(214, 223, 213, 0.84);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-}
-
-.simulation-card {
-  min-height: 260px;
-}
-
-.simulation-controls {
-  display: grid;
-  grid-template-columns: 120px minmax(0, 1fr);
-  gap: 10px;
-  align-items: end;
-}
-
-.simulation-field {
-  display: grid;
-  gap: 6px;
-}
-
-.simulation-field span {
-  color: rgba(214, 223, 213, 0.78);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.simulation-field input {
-  min-height: 34px;
-  width: 100%;
-  border: 1px solid rgba(159, 176, 163, 0.28);
-  border-radius: 6px;
-  background: rgba(8, 11, 10, 0.62);
-  color: #eef2e8;
-  padding: 0 10px;
-  font: inherit;
-}
-
-#simulationRunButton {
-  min-height: 34px;
-  border-color: rgba(185, 232, 109, 0.42);
-  background: rgba(185, 232, 109, 0.14);
-  color: #eef2e8;
-}
-
-.simulation-output {
-  max-height: 260px;
-  overflow: auto;
-  margin: 0;
-  border: 1px solid rgba(132, 147, 138, 0.18);
-  border-radius: 8px;
-  background: rgba(8, 11, 10, 0.54);
-  color: rgba(235, 240, 230, 0.88);
-  padding: 12px;
-  font: 11px/1.45 "Cascadia Mono", Consolas, monospace;
-  white-space: pre-wrap;
 }
 
 .order-card-section {
@@ -2935,6 +2932,25 @@ dd {
 
   .account-profile-stats dd {
     font-size: 13px;
+  }
+
+  .account-profile-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .cosmetic-shop-overlay {
+    padding:
+      max(8px, env(safe-area-inset-top))
+      max(8px, env(safe-area-inset-right))
+      max(8px, env(safe-area-inset-bottom))
+      max(8px, env(safe-area-inset-left));
+  }
+
+  .cosmetic-shop-panel {
+    width: 100%;
+    max-height: calc(100dvh - 18px);
+    border-radius: 12px;
+    padding: 12px;
   }
 
   .cosmetic-shop-item {

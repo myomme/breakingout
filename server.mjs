@@ -424,10 +424,26 @@ function handleGameResult(client, message) {
 function handleAccountAction(client, message) {
   const playerId = message.sourceId;
   const action = String(message.action ?? "");
-  const item = getCosmeticCatalog().find((entry) => entry.id === message.itemId);
   const account = getAccountRecord(playerId, message.nickname);
 
-  if (!playerId || !item) {
+  if (!playerId) {
+    sendJson(client, { type: "accountRejected", sourceId: "server", message: "Missing player id", at: Date.now() });
+    return;
+  }
+
+  if (action === "debugGrantValue") {
+    const amount = Math.max(1, Math.min(10000, Math.floor(Number(message.amount ?? 500))));
+    account.wallet.lifetimeLootValue += amount;
+    account.wallet.spendableValue += amount;
+    account.updatedAt = Date.now();
+    accounts.set(playerId, account);
+    scheduleAccountSave();
+    sendJson(client, { type: "accountUpdated", sourceId: "server", account, at: Date.now() });
+    return;
+  }
+
+  const item = getCosmeticCatalog().find((entry) => entry.id === message.itemId);
+  if (!item) {
     sendJson(client, { type: "accountRejected", sourceId: "server", message: "Invalid shop item", at: Date.now() });
     return;
   }
