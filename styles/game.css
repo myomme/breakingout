@@ -514,6 +514,10 @@ body {
   display: none !important;
 }
 
+.mobile-view-reset {
+  display: none;
+}
+
 .room-list,
 .room-slot-list {
   display: grid;
@@ -2885,6 +2889,27 @@ dd {
 
   .game-side-panel {
     display: none;
+  }
+
+  .mobile-view-reset {
+    position: fixed;
+    left: max(8px, env(safe-area-inset-left));
+    top: max(112px, calc(env(safe-area-inset-top) + 104px));
+    z-index: 24;
+    display: grid;
+    min-width: 48px;
+    min-height: 34px;
+    place-items: center;
+    border: 1px solid rgba(230, 236, 224, 0.2);
+    border-radius: 999px;
+    background: rgba(12, 17, 17, 0.58);
+    color: rgba(242, 246, 236, 0.82);
+    padding: 0 10px;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+    backdrop-filter: blur(6px);
+    font-size: 11px;
+    font-weight: 900;
+    pointer-events: auto;
   }
 
   .raid-progress-hud {

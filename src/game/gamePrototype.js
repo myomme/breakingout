@@ -117,6 +117,7 @@ let gameChatBadge = document.querySelector("#gameChatBadge");
 let gameChatMessages = document.querySelector("#gameChatMessages");
 let gameChatForm = document.querySelector("#gameChatForm");
 let gameChatInput = document.querySelector("#gameChatInput");
+let mobileViewResetButton = null;
 let chatDisabled = false;
 
 let state;
@@ -692,6 +693,7 @@ async function bootstrap() {
   bindEvents();
   initTopDrawerUi();
   ensureBeginnerHelpUi();
+  ensureMobileViewResetUi();
   updateUi();
   renderer.render();
   gameBootstrapped = true;
@@ -3360,6 +3362,35 @@ function refreshTabUnreadClasses() {
 function closeDrawer() {
   playDrawerCloseSfx(activeDrawerTab);
   loadoutPanel.classList.add("is-minimized");
+}
+
+function ensureMobileViewResetUi() {
+  if (mobileViewResetButton) {
+    return;
+  }
+
+  const boardPanel = document.querySelector(".game-board-panel");
+  if (!boardPanel) {
+    return;
+  }
+
+  mobileViewResetButton = document.createElement("button");
+  mobileViewResetButton.id = "mobileViewReset";
+  mobileViewResetButton.className = "mobile-view-reset";
+  mobileViewResetButton.type = "button";
+  mobileViewResetButton.textContent = "화면";
+  mobileViewResetButton.setAttribute("aria-label", "맵 화면 리셋");
+  mobileViewResetButton.addEventListener("click", resetMobileGameView);
+  boardPanel.append(mobileViewResetButton);
+}
+
+function resetMobileGameView() {
+  renderer?.centerCamera();
+  renderer?.requestRender();
+  clearPendingTileAction();
+  if (actionLog) {
+    actionLog.textContent = "맵 화면을 기본 위치로 되돌렸습니다.";
+  }
 }
 
 function ensureSessionChatUi() {
