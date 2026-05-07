@@ -3417,7 +3417,7 @@ function ensureSessionChatUi() {
     gameChat.setAttribute("aria-label", "Game Chat");
     gameChat.innerHTML = `
       <button id="gameChatToggle" class="session-chat-toggle" type="button" aria-expanded="false">
-        <strong>+</strong>
+        <strong>⌄</strong>
         <span id="gameChatBadge" hidden>0</span>
       </button>
       <div class="session-chat-body">
