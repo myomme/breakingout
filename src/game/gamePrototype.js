@@ -1065,6 +1065,7 @@ function enterLobby() {
   const account = readAccountRecord();
   account.nickname = nickname;
   writeAccountRecord(account);
+  requestServerAccount();
   showLobbyStep("lobby");
   renderLobby();
   setStartStatus("방을 만들거나 방 번호로 입장하세요.");
@@ -1483,10 +1484,69 @@ function renderAccountSummary() {
     <span>보유 가치 <b>${formatValue(account.wallet.spendableValue)}</b></span>
     <span>전적 <b>${account.stats.wins}/${account.stats.gamesCompleted}</b></span>
   `;
+
+  renderAccountProfileCard(account);
 }
 
 function formatValue(value) {
   return Number(value ?? 0).toLocaleString("ko-KR");
+}
+
+function renderAccountProfileCard(account = readAccountRecord()) {
+  [lobbyStep, roomStep].forEach((container) => {
+    if (!container) {
+      return;
+    }
+
+    let card = container.querySelector(".account-profile-card");
+    if (!card) {
+      card = document.createElement("section");
+      card.className = "account-profile-card";
+      const anchor = container.querySelector(".lobby-player-strip") ?? container.querySelector(".room-header");
+      anchor?.insertAdjacentElement("afterend", card);
+    }
+
+    const completed = account.stats.gamesCompleted ?? 0;
+    const winRate = completed > 0 ? Math.round((account.stats.wins ?? 0) / completed * 100) : 0;
+    const lastGameText = account.lastGame
+      ? `${formatValue(account.lastGame.value)} 가치 / ${account.lastGame.winner ? "승리" : "기록됨"}`
+      : "아직 완료된 게임 없음";
+
+    card.innerHTML = `
+      <div class="account-profile-main">
+        <span>임시 서버 계정</span>
+        <strong>${escapeHtml(account.nickname || lobbySession.nickname || "Player")}</strong>
+        <small>정식 로그인 전까지 현재 브라우저의 playerId로 기록됩니다.</small>
+      </div>
+      <dl class="account-profile-stats">
+        <div>
+          <dt>보유 가치</dt>
+          <dd>${formatValue(account.wallet.spendableValue)}</dd>
+        </div>
+        <div>
+          <dt>누적 가치</dt>
+          <dd>${formatValue(account.wallet.lifetimeLootValue)}</dd>
+        </div>
+        <div>
+          <dt>승률</dt>
+          <dd>${winRate}%</dd>
+        </div>
+        <div>
+          <dt>킬 / 사망</dt>
+          <dd>${formatValue(account.stats.kills)} / ${formatValue(account.stats.deaths)}</dd>
+        </div>
+        <div>
+          <dt>탈출</dt>
+          <dd>${formatValue(account.stats.extracts)}</dd>
+        </div>
+        <div>
+          <dt>최고 가치</dt>
+          <dd>${formatValue(account.stats.bestGameValue)}</dd>
+        </div>
+      </dl>
+      <p class="account-profile-last">최근 게임: ${escapeHtml(lastGameText)}</p>
+    `;
+  });
 }
 
 function renderRoomList() {
@@ -1957,7 +2017,8 @@ function createDefaultAccountRecord() {
       wins: 0,
       kills: 0,
       deaths: 0,
-      bestGameValue: 0
+      bestGameValue: 0,
+      extracts: 0
     },
     cosmetics: {
       equipped: {
@@ -2000,6 +2061,44 @@ function writeAccountRecord(account) {
     nickname: lobbySession.nickname || account.nickname,
     updatedAt: Date.now()
   });
+}
+
+function handleServerAccountUpdated(account) {
+  if (!account || account.accountId !== lobbySession.localPlayerId) {
+    return;
+  }
+
+  const localAccount = readAccountRecord();
+  const serverApplied = Array.isArray(account.appliedGameResults) ? account.appliedGameResults : [];
+  const localApplied = Array.isArray(localAccount.appliedGameResults) ? localAccount.appliedGameResults : [];
+  writeAccountRecord({
+    ...localAccount,
+    ...account,
+    wallet: {
+      ...localAccount.wallet,
+      ...(account.wallet ?? {}),
+      lifetimeLootValue: Math.max(localAccount.wallet.lifetimeLootValue ?? 0, account.wallet?.lifetimeLootValue ?? 0),
+      spendableValue: Math.max(localAccount.wallet.spendableValue ?? 0, account.wallet?.spendableValue ?? 0),
+      spentValue: Math.max(localAccount.wallet.spentValue ?? 0, account.wallet?.spentValue ?? 0)
+    },
+    stats: {
+      ...localAccount.stats,
+      ...(account.stats ?? {}),
+      gamesPlayed: Math.max(localAccount.stats.gamesPlayed ?? 0, account.stats?.gamesPlayed ?? 0),
+      gamesCompleted: Math.max(localAccount.stats.gamesCompleted ?? 0, account.stats?.gamesCompleted ?? 0),
+      wins: Math.max(localAccount.stats.wins ?? 0, account.stats?.wins ?? 0),
+      kills: Math.max(localAccount.stats.kills ?? 0, account.stats?.kills ?? 0),
+      deaths: Math.max(localAccount.stats.deaths ?? 0, account.stats?.deaths ?? 0),
+      bestGameValue: Math.max(localAccount.stats.bestGameValue ?? 0, account.stats?.bestGameValue ?? 0),
+      extracts: Math.max(localAccount.stats.extracts ?? 0, account.stats?.extracts ?? 0)
+    },
+    cosmetics: {
+      ...localAccount.cosmetics,
+      ...(account.cosmetics ?? {})
+    },
+    appliedGameResults: Array.from(new Set([...localApplied, ...serverApplied])).slice(-80)
+  });
+  renderAccountSummary();
 }
 
 function initRoomSync() {
@@ -2059,6 +2158,7 @@ function initServerSync() {
       serverReconnectTimer = 0;
     }
     requestServerRooms();
+    requestServerAccount();
     if (lobbySession.currentRoom?.id) {
       requestServerGameSnapshot(lobbySession.currentRoom.id);
       requestChatHistory(lobbySession.currentRoom.id);
@@ -2104,6 +2204,16 @@ function handleServerMessage(message) {
 
   if (message.type === "serverError") {
     setStartStatus(`서버 오류: ${message.message ?? "알 수 없는 오류"}`);
+    return;
+  }
+
+  if (message.type === "accountUpdated") {
+    handleServerAccountUpdated(message.account);
+    return;
+  }
+
+  if (message.type === "accountRejected") {
+    setStartStatus(`계정 저장 실패: ${message.message ?? "알 수 없는 오류"}`);
     return;
   }
 
@@ -2163,6 +2273,19 @@ function requestServerRooms() {
     return false;
   }
   return true;
+}
+
+function requestServerAccount() {
+  if (!lobbySession.localPlayerId) {
+    return false;
+  }
+
+  return sendServerMessage({
+    type: "getAccount",
+    sourceId: lobbySession.localPlayerId,
+    nickname: lobbySession.nickname,
+    at: Date.now()
+  });
 }
 
 function refreshRoomListFromServer() {
@@ -6754,7 +6877,32 @@ function applyGameSummaryToAccount(summary) {
   };
   account.appliedGameResults = [...(account.appliedGameResults ?? []), resultKey].slice(-20);
   writeAccountRecord(account);
+  sendServerGameResult({
+    resultKey,
+    value: confirmedValue,
+    winner,
+    kills: localKills,
+    dead: Boolean(localPlayer.dead),
+    finalRaidExtracted: Boolean(localPlayer.extractedThisRaid),
+    mapId: state.gameMap?.mapId ?? null
+  });
   renderAccountSummary();
+}
+
+function sendServerGameResult(result) {
+  if (!lobbySession.localPlayerId) {
+    return false;
+  }
+
+  return sendServerMessage({
+    type: "gameResult",
+    sourceId: lobbySession.localPlayerId,
+    nickname: lobbySession.nickname,
+    roomId: lobbySession.currentRoom?.id ?? null,
+    resultKey: result.resultKey,
+    result,
+    at: Date.now()
+  });
 }
 
 function clearSessionChatOnGameEnd() {

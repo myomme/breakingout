@@ -14,6 +14,10 @@ const snapshots = new Map();
 const chatMessagesByRoom = new Map();
 const ROOM_TTL_MS = 12 * 60 * 60 * 1000;
 const MAX_CHAT_MESSAGES = 80;
+const ACCOUNT_DB_PATH = path.join(__dirname, "data", "serverAccounts.json");
+const ACCOUNT_RESULT_HISTORY_LIMIT = 80;
+const accounts = await loadAccounts();
+let accountSaveTimer = 0;
 
 const MIME_TYPES = new Map([
   [".html", "text/html; charset=utf-8"],
@@ -39,6 +43,7 @@ const server = http.createServer(async (request, response) => {
         ok: true,
         rooms: rooms.length,
         clients: clients.size,
+        accounts: accounts.size,
         uptime: Math.floor(process.uptime())
       }));
       return;
@@ -208,6 +213,17 @@ function handleMessage(client, message) {
     return;
   }
 
+  if (message.type === "getAccount") {
+    const account = getAccountRecord(message.sourceId, message.nickname);
+    sendJson(client, { type: "accountUpdated", sourceId: "server", account, at: Date.now() });
+    return;
+  }
+
+  if (message.type === "gameResult") {
+    handleGameResult(client, message);
+    return;
+  }
+
   if (message.type === "chatMessage") {
     handleChatMessage(client, message);
     return;
@@ -261,6 +277,143 @@ function handleMessage(client, message) {
   if (message.type === "playerCommand") {
     broadcast({ ...message, sourceClientId: client.id });
   }
+}
+
+async function loadAccounts() {
+  try {
+    const raw = await fs.readFile(ACCOUNT_DB_PATH, "utf8");
+    const parsed = JSON.parse(raw);
+    return new Map(Object.entries(parsed.accounts ?? {}));
+  } catch {
+    return new Map();
+  }
+}
+
+function scheduleAccountSave() {
+  if (accountSaveTimer) return;
+  accountSaveTimer = setTimeout(() => {
+    accountSaveTimer = 0;
+    void saveAccounts();
+  }, 500);
+}
+
+async function saveAccounts() {
+  await fs.mkdir(path.dirname(ACCOUNT_DB_PATH), { recursive: true });
+  await fs.writeFile(ACCOUNT_DB_PATH, JSON.stringify({
+    version: 1,
+    updatedAt: Date.now(),
+    accounts: Object.fromEntries(accounts)
+  }, null, 2));
+}
+
+function createDefaultAccount(playerId, nickname = "") {
+  const now = Date.now();
+  return {
+    accountId: String(playerId ?? ""),
+    nickname: String(nickname ?? "").trim().slice(0, 18),
+    createdAt: now,
+    updatedAt: now,
+    wallet: {
+      lifetimeLootValue: 0,
+      spendableValue: 0,
+      spentValue: 0
+    },
+    stats: {
+      gamesPlayed: 0,
+      gamesCompleted: 0,
+      wins: 0,
+      kills: 0,
+      deaths: 0,
+      bestGameValue: 0,
+      extracts: 0
+    },
+    cosmetics: {
+      equipped: {
+        nameplate: "default",
+        chatBubble: "default",
+        tokenSkin: "default",
+        title: "default"
+      },
+      owned: ["default"]
+    },
+    lastGame: null,
+    appliedGameResults: []
+  };
+}
+
+function normalizeAccount(account, playerId, nickname = "") {
+  const base = createDefaultAccount(playerId, nickname);
+  return {
+    ...base,
+    ...(account ?? {}),
+    accountId: String(playerId ?? account?.accountId ?? ""),
+    nickname: String(nickname || account?.nickname || "").trim().slice(0, 18),
+    wallet: { ...base.wallet, ...(account?.wallet ?? {}) },
+    stats: { ...base.stats, ...(account?.stats ?? {}) },
+    cosmetics: { ...base.cosmetics, ...(account?.cosmetics ?? {}) },
+    appliedGameResults: Array.isArray(account?.appliedGameResults) ? account.appliedGameResults : []
+  };
+}
+
+function getAccountRecord(playerId, nickname = "") {
+  if (!playerId) return createDefaultAccount("", nickname);
+  const account = normalizeAccount(accounts.get(playerId), playerId, nickname);
+  if (!accounts.has(playerId) || (nickname && account.nickname !== nickname)) {
+    account.updatedAt = Date.now();
+    accounts.set(playerId, account);
+    scheduleAccountSave();
+  }
+  return account;
+}
+
+function handleGameResult(client, message) {
+  const playerId = message.sourceId;
+  if (!playerId) {
+    sendJson(client, { type: "accountRejected", sourceId: "server", message: "Missing player id", at: Date.now() });
+    return;
+  }
+
+  const room = message.roomId ? findRoom(message.roomId) : null;
+  if (room) {
+    const slot = normalizeServerSlots(room.slots).find((entry) => entry.type === "player" && entry.playerId === playerId);
+    if (!slot) {
+      sendJson(client, { type: "accountRejected", sourceId: "server", message: "Player not in room", at: Date.now() });
+      return;
+    }
+  }
+
+  const account = getAccountRecord(playerId, message.nickname);
+  const resultKey = String(message.resultKey ?? `${message.roomId ?? "solo"}:${playerId}:${message.at ?? Date.now()}`);
+  if (!account.appliedGameResults.includes(resultKey)) {
+    const result = message.result ?? {};
+    const value = Math.max(0, Math.floor(Number(result.value ?? 0)));
+    const kills = Math.max(0, Math.floor(Number(result.kills ?? 0)));
+    account.wallet.lifetimeLootValue += value;
+    account.wallet.spendableValue += value;
+    account.stats.gamesPlayed += 1;
+    account.stats.gamesCompleted += 1;
+    account.stats.wins += result.winner ? 1 : 0;
+    account.stats.kills += kills;
+    account.stats.deaths += result.dead ? 1 : 0;
+    account.stats.extracts += result.finalRaidExtracted ? 1 : 0;
+    account.stats.bestGameValue = Math.max(account.stats.bestGameValue ?? 0, value);
+    account.lastGame = {
+      at: Date.now(),
+      roomId: message.roomId ?? null,
+      mapId: result.mapId ?? null,
+      value,
+      winner: Boolean(result.winner),
+      kills,
+      dead: Boolean(result.dead),
+      finalRaidExtracted: Boolean(result.finalRaidExtracted)
+    };
+    account.appliedGameResults = [...account.appliedGameResults, resultKey].slice(-ACCOUNT_RESULT_HISTORY_LIMIT);
+    account.updatedAt = Date.now();
+    accounts.set(playerId, account);
+    scheduleAccountSave();
+  }
+
+  sendJson(client, { type: "accountUpdated", sourceId: "server", account, at: Date.now() });
 }
 
 function handleChatMessage(client, message) {
@@ -424,9 +577,9 @@ function shutdown() {
   for (const client of clients) {
     client.socket.end();
   }
-  server.close(() => {
+  void saveAccounts().catch(() => {}).finally(() => server.close(() => {
     process.exit(0);
-  });
+  }));
 }
 
 function broadcastRooms(reason = "roomAction") {
