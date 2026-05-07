@@ -252,6 +252,17 @@ body {
   letter-spacing: 0.04em;
 }
 
+.account-profile-main.account-profile-card--nameplate_ranger {
+  border-left: 3px solid #b9e86d;
+  padding-left: 9px;
+}
+
+.account-profile-main.account-profile-card--nameplate_blacksite {
+  border-left: 3px solid #7a88ff;
+  padding-left: 9px;
+  text-shadow: 0 0 16px rgba(122, 136, 255, 0.26);
+}
+
 .account-profile-stats {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -440,6 +451,16 @@ body {
   justify-self: end;
   border-left-color: rgba(115, 195, 209, 0.72);
   background: rgba(115, 195, 209, 0.08);
+}
+
+.session-chat-message.chat-bubble--chat_radio {
+  border-left-color: rgba(185, 232, 109, 0.74);
+  background: rgba(32, 50, 39, 0.72);
+}
+
+.session-chat-message.chat-bubble--chat_amber {
+  border-left-color: rgba(244, 162, 97, 0.86);
+  background: rgba(75, 45, 25, 0.68);
 }
 
 .session-chat-message div {
@@ -2282,6 +2303,79 @@ dd {
   min-height: 0;
 }
 
+.cosmetic-shop-card {
+  gap: 10px;
+}
+
+.cosmetic-shop-list {
+  display: grid;
+  gap: 8px;
+}
+
+.cosmetic-shop-balance,
+.cosmetic-shop-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid rgba(132, 147, 138, 0.18);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.045);
+  padding: 10px;
+}
+
+.cosmetic-shop-balance span,
+.cosmetic-shop-item span {
+  color: rgba(224, 214, 193, 0.66);
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.cosmetic-shop-balance strong,
+.cosmetic-shop-item strong {
+  color: #e7f6c4;
+  font-size: 14px;
+  font-weight: 950;
+}
+
+.cosmetic-shop-item {
+  align-items: stretch;
+}
+
+.cosmetic-shop-item.is-equipped {
+  border-color: rgba(185, 232, 109, 0.42);
+  background: rgba(185, 232, 109, 0.08);
+}
+
+.cosmetic-shop-item > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.cosmetic-shop-item p {
+  margin: 0;
+  color: rgba(215, 220, 210, 0.72);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.cosmetic-shop-item button {
+  min-width: 86px;
+  border-color: rgba(185, 232, 109, 0.34);
+  background: rgba(185, 232, 109, 0.13);
+  color: #eef8d0;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.cosmetic-shop-item button:disabled {
+  opacity: 0.46;
+}
+
 .help-toggle-row {
   display: flex;
   align-items: center;
@@ -2841,6 +2935,15 @@ dd {
 
   .account-profile-stats dd {
     font-size: 13px;
+  }
+
+  .cosmetic-shop-item {
+    display: grid;
+  }
+
+  .cosmetic-shop-item button {
+    width: 100%;
+    min-height: 34px;
   }
 
   .lobby-actions {

@@ -631,12 +631,15 @@ export class GameRenderer {
       const renderPosition = this.getAnimatedUnitPosition(player.id) ?? player.position;
       const center = this.worldToScreen(this.hexToWorld(renderPosition));
       const hitFlash = this.effects.some((effect) => effect.type === "hit" && effect.targetId === player.id);
+      const tokenSkin = player.cosmetics?.equipped?.tokenSkin ?? "default";
+      const fillColor = getPlayerTokenFill({ active, attackable, hitFlash, tokenSkin });
+      const strokeColor = getPlayerTokenStroke({ active, tokenSkin });
 
       this.ctx.beginPath();
       this.ctx.arc(center.x, center.y, active ? 9 : 7, 0, Math.PI * 2);
-      this.ctx.fillStyle = hitFlash ? "#f18e84" : active ? "#1b383a" : attackable ? "#b5302d" : "#4c7780";
+      this.ctx.fillStyle = fillColor;
       this.ctx.fill();
-      this.ctx.strokeStyle = active ? "#ffffff" : "#e7efe8";
+      this.ctx.strokeStyle = strokeColor;
       this.ctx.lineWidth = active ? 3 : 2;
       this.ctx.stroke();
 
@@ -1139,6 +1142,34 @@ function degreesToRadians(degrees) {
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
+}
+
+function getPlayerTokenFill({ active, attackable, hitFlash, tokenSkin }) {
+  if (hitFlash) {
+    return "#f18e84";
+  }
+
+  if (tokenSkin === "token_ember") {
+    return active ? "#5c241f" : attackable ? "#b5302d" : "#8b3b2b";
+  }
+
+  if (tokenSkin === "token_white_ring") {
+    return active ? "#203b3d" : attackable ? "#b5302d" : "#5d8588";
+  }
+
+  return active ? "#1b383a" : attackable ? "#b5302d" : "#4c7780";
+}
+
+function getPlayerTokenStroke({ active, tokenSkin }) {
+  if (tokenSkin === "token_ember") {
+    return active ? "#ffd5b1" : "#f4a261";
+  }
+
+  if (tokenSkin === "token_white_ring") {
+    return "#ffffff";
+  }
+
+  return active ? "#ffffff" : "#e7efe8";
 }
 
 function easeOutCubic(value) {

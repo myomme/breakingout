@@ -224,6 +224,11 @@ function handleMessage(client, message) {
     return;
   }
 
+  if (message.type === "accountAction") {
+    handleAccountAction(client, message);
+    return;
+  }
+
   if (message.type === "chatMessage") {
     handleChatMessage(client, message);
     return;
@@ -416,6 +421,65 @@ function handleGameResult(client, message) {
   sendJson(client, { type: "accountUpdated", sourceId: "server", account, at: Date.now() });
 }
 
+function handleAccountAction(client, message) {
+  const playerId = message.sourceId;
+  const action = String(message.action ?? "");
+  const item = getCosmeticCatalog().find((entry) => entry.id === message.itemId);
+  const account = getAccountRecord(playerId, message.nickname);
+
+  if (!playerId || !item) {
+    sendJson(client, { type: "accountRejected", sourceId: "server", message: "Invalid shop item", at: Date.now() });
+    return;
+  }
+
+  const owned = new Set(account.cosmetics.owned ?? ["default"]);
+
+  if (action === "purchaseCosmetic") {
+    if (owned.has(item.id)) {
+      sendJson(client, { type: "accountUpdated", sourceId: "server", account, at: Date.now() });
+      return;
+    }
+    if ((account.wallet.spendableValue ?? 0) < item.price) {
+      sendJson(client, { type: "accountRejected", sourceId: "server", message: "Not enough value", at: Date.now() });
+      return;
+    }
+    account.wallet.spendableValue -= item.price;
+    account.wallet.spentValue += item.price;
+    owned.add(item.id);
+    account.cosmetics.owned = Array.from(owned);
+  } else if (action === "equipCosmetic") {
+    if (!owned.has(item.id)) {
+      sendJson(client, { type: "accountRejected", sourceId: "server", message: "Item not owned", at: Date.now() });
+      return;
+    }
+  } else {
+    sendJson(client, { type: "accountRejected", sourceId: "server", message: "Unknown account action", at: Date.now() });
+    return;
+  }
+
+  account.cosmetics.equipped = {
+    ...account.cosmetics.equipped,
+    [item.category]: item.id
+  };
+  account.updatedAt = Date.now();
+  accounts.set(playerId, account);
+  scheduleAccountSave();
+  sendJson(client, { type: "accountUpdated", sourceId: "server", account, at: Date.now() });
+}
+
+function getCosmeticCatalog() {
+  return [
+    { id: "nameplate_ranger", category: "nameplate", price: 80 },
+    { id: "nameplate_blacksite", category: "nameplate", price: 160 },
+    { id: "chat_radio", category: "chatBubble", price: 60 },
+    { id: "chat_amber", category: "chatBubble", price: 140 },
+    { id: "token_white_ring", category: "tokenSkin", price: 90 },
+    { id: "token_ember", category: "tokenSkin", price: 180 },
+    { id: "title_rookie", category: "title", price: 50 },
+    { id: "title_contractor", category: "title", price: 130 }
+  ];
+}
+
 function handleChatMessage(client, message) {
   const room = findRoom(message.roomId);
   if (!room) {
@@ -441,6 +505,7 @@ function handleChatMessage(client, message) {
     playerId: message.sourceId,
     nickname: slot.nickname ?? "Player",
     text,
+    cosmetics: getAccountRecord(message.sourceId, slot.nickname).cosmetics?.equipped ?? {},
     phase: message.phase ?? null,
     raid: message.raid ?? null,
     at: Date.now()

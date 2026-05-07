@@ -158,6 +158,7 @@ let eventHoldList = null;
 let eventDebugSelect = null;
 let eventDebugRun = null;
 let soundSettingsList = null;
+let cosmeticShopList = null;
 let simulationRunCount = null;
 let simulationRunButton = null;
 let simulationOutput = null;
@@ -224,6 +225,72 @@ const seenChatMessageIds = new Set();
 let unreadGameChatCount = 0;
 const clearedChatRoomIds = new Set();
 const appliedAccountResultKeys = new Set();
+const COSMETIC_CATALOG = [
+  {
+    id: "nameplate_ranger",
+    category: "nameplate",
+    categoryLabel: "이름표",
+    label: "레인저 플레이트",
+    description: "로비 프로필에 녹색 작전 이름표를 적용합니다.",
+    price: 80
+  },
+  {
+    id: "nameplate_blacksite",
+    category: "nameplate",
+    categoryLabel: "이름표",
+    label: "블랙사이트 플레이트",
+    description: "로비 프로필에 어두운 고급 이름표를 적용합니다.",
+    price: 160
+  },
+  {
+    id: "chat_radio",
+    category: "chatBubble",
+    categoryLabel: "채팅",
+    label: "무전 말풍선",
+    description: "내 채팅 말풍선에 무전기 스타일 테두리를 적용합니다.",
+    price: 60
+  },
+  {
+    id: "chat_amber",
+    category: "chatBubble",
+    categoryLabel: "채팅",
+    label: "앰버 말풍선",
+    description: "내 채팅 말풍선에 주황색 작전 표시를 적용합니다.",
+    price: 140
+  },
+  {
+    id: "token_white_ring",
+    category: "tokenSkin",
+    categoryLabel: "말",
+    label: "화이트 링",
+    description: "내 말 주변의 링을 더 선명하게 표시합니다.",
+    price: 90
+  },
+  {
+    id: "token_ember",
+    category: "tokenSkin",
+    categoryLabel: "말",
+    label: "엠버 토큰",
+    description: "내 말에 붉은 작전 식별색을 적용합니다.",
+    price: 180
+  },
+  {
+    id: "title_rookie",
+    category: "title",
+    categoryLabel: "칭호",
+    label: "신입 오퍼레이터",
+    description: "프로필 이름 아래에 신입 오퍼레이터 칭호를 표시합니다.",
+    price: 50
+  },
+  {
+    id: "title_contractor",
+    category: "title",
+    categoryLabel: "칭호",
+    label: "컨트랙터",
+    description: "프로필 이름 아래에 컨트랙터 칭호를 표시합니다.",
+    price: 130
+  }
+];
 let beginnerHelpEnabled = true;
 let beginnerHelpOpen = false;
 let beginnerHelpStepIndex = 0;
@@ -745,7 +812,8 @@ function getConfiguredPlayerLoadouts() {
         controllerId: slot.playerId,
         isAi: false,
         weaponId: slot.weaponId ?? "AR",
-        armorId: slot.armorId ?? "lightSet"
+        armorId: slot.armorId ?? "lightSet",
+        cosmetics: slot.playerId === lobbySession.localPlayerId ? readAccountRecord().cosmetics : null
       };
     });
 }
@@ -1511,12 +1579,14 @@ function renderAccountProfileCard(account = readAccountRecord()) {
     const lastGameText = account.lastGame
       ? `${formatValue(account.lastGame.value)} 가치 / ${account.lastGame.winner ? "승리" : "기록됨"}`
       : "아직 완료된 게임 없음";
+    const equippedTitle = getCosmeticLabel(account.cosmetics?.equipped?.title);
+    const nameplateClass = getCosmeticClass(account.cosmetics?.equipped?.nameplate, "account-profile-card--");
 
     card.innerHTML = `
-      <div class="account-profile-main">
+      <div class="account-profile-main ${nameplateClass}">
         <span>임시 서버 계정</span>
         <strong>${escapeHtml(account.nickname || lobbySession.nickname || "Player")}</strong>
-        <small>정식 로그인 전까지 현재 브라우저의 playerId로 기록됩니다.</small>
+        <small>${escapeHtml(equippedTitle || "정식 로그인 전까지 현재 브라우저의 playerId로 기록됩니다.")}</small>
       </div>
       <dl class="account-profile-stats">
         <div>
@@ -1547,6 +1617,28 @@ function renderAccountProfileCard(account = readAccountRecord()) {
       <p class="account-profile-last">최근 게임: ${escapeHtml(lastGameText)}</p>
     `;
   });
+}
+
+function getCosmeticLabel(id) {
+  return COSMETIC_CATALOG.find((item) => item.id === id)?.label ?? "";
+}
+
+function getCosmeticClass(id, prefix = "") {
+  return id ? `${prefix}${String(id).replace(/[^a-z0-9_-]/gi, "-")}` : "";
+}
+
+function applyLocalCosmeticsToPlayers() {
+  if (!state?.players?.length) {
+    return;
+  }
+
+  const account = readAccountRecord();
+  state.players.forEach((player) => {
+    if (player.controllerId === lobbySession.localPlayerId) {
+      player.cosmetics = account.cosmetics;
+    }
+  });
+  renderer?.requestRender?.();
 }
 
 function renderRoomList() {
@@ -2076,21 +2168,11 @@ function handleServerAccountUpdated(account) {
     ...account,
     wallet: {
       ...localAccount.wallet,
-      ...(account.wallet ?? {}),
-      lifetimeLootValue: Math.max(localAccount.wallet.lifetimeLootValue ?? 0, account.wallet?.lifetimeLootValue ?? 0),
-      spendableValue: Math.max(localAccount.wallet.spendableValue ?? 0, account.wallet?.spendableValue ?? 0),
-      spentValue: Math.max(localAccount.wallet.spentValue ?? 0, account.wallet?.spentValue ?? 0)
+      ...(account.wallet ?? {})
     },
     stats: {
       ...localAccount.stats,
-      ...(account.stats ?? {}),
-      gamesPlayed: Math.max(localAccount.stats.gamesPlayed ?? 0, account.stats?.gamesPlayed ?? 0),
-      gamesCompleted: Math.max(localAccount.stats.gamesCompleted ?? 0, account.stats?.gamesCompleted ?? 0),
-      wins: Math.max(localAccount.stats.wins ?? 0, account.stats?.wins ?? 0),
-      kills: Math.max(localAccount.stats.kills ?? 0, account.stats?.kills ?? 0),
-      deaths: Math.max(localAccount.stats.deaths ?? 0, account.stats?.deaths ?? 0),
-      bestGameValue: Math.max(localAccount.stats.bestGameValue ?? 0, account.stats?.bestGameValue ?? 0),
-      extracts: Math.max(localAccount.stats.extracts ?? 0, account.stats?.extracts ?? 0)
+      ...(account.stats ?? {})
     },
     cosmetics: {
       ...localAccount.cosmetics,
@@ -2099,6 +2181,8 @@ function handleServerAccountUpdated(account) {
     appliedGameResults: Array.from(new Set([...localApplied, ...serverApplied])).slice(-80)
   });
   renderAccountSummary();
+  renderCosmeticShop();
+  applyLocalCosmeticsToPlayers();
 }
 
 function initRoomSync() {
@@ -3418,6 +3502,14 @@ function setupDrawerPanes() {
   otherPane.dataset.pane = "other";
   otherPane.innerHTML = `
     <div class="drawer-pane-content">
+      <section class="drawer-card cosmetic-shop-card">
+        <div class="loadout-section-title">
+          <h3>코스메틱 상점</h3>
+          <span class="loadout-count">No P2W</span>
+        </div>
+        <p class="weapon-passive">루팅 가치로 밸런스에 영향을 주지 않는 이름표, 채팅, 말 스킨, 칭호를 구매하고 장착합니다.</p>
+        <div id="cosmeticShopList" class="cosmetic-shop-list"></div>
+      </section>
       <section class="drawer-card beginner-help-card">
         <div class="loadout-section-title">
           <h3>초보자 도움말</h3>
@@ -3469,6 +3561,7 @@ function setupDrawerPanes() {
   beginnerHelpToggle = document.querySelector("#beginnerHelpToggle");
   beginnerHelpSwitch = document.querySelector("#beginnerHelpSwitch");
   soundSettingsList = document.querySelector("#soundSettingsList");
+  cosmeticShopList = document.querySelector("#cosmeticShopList");
   simulationRunCount = document.querySelector("#simulationRunCount");
   simulationRunButton = document.querySelector("#simulationRunButton");
   simulationOutput = document.querySelector("#simulationOutput");
@@ -3499,6 +3592,7 @@ function setupDrawerPanes() {
   loadoutPanel.dataset.tabsReady = "true";
   populateEventDebugSelect();
   renderSoundSettings();
+  renderCosmeticShop();
   bindSoundSettings();
   bindSimulationControls();
   bindBeginnerHelpControls();
@@ -3522,6 +3616,7 @@ function setDrawerTab(tab) {
   } else {
     loadoutTitle.textContent = "기타";
     loadoutSubtitle.textContent = "도움말, 사운드, 테스트 설정";
+    renderCosmeticShop();
   }
 
   loadoutPanel.querySelectorAll(".drawer-pane").forEach((pane) => {
@@ -4053,8 +4148,9 @@ function renderSessionChat() {
 function renderChatMessage(message) {
   const mine = message.playerId === lobbySession.localPlayerId;
   const context = message.raid && message.phase ? `R${message.raid} P${message.phase}` : "Lobby";
+  const bubbleClass = getCosmeticClass(message.cosmetics?.chatBubble, "chat-bubble--");
   return `
-    <li class="session-chat-message ${mine ? "is-mine" : ""}">
+    <li class="session-chat-message ${mine ? "is-mine" : ""} ${bubbleClass}">
       <div>
         <strong>${escapeHtml(message.nickname ?? "Player")}</strong>
         <small>${context}</small>
@@ -4481,6 +4577,76 @@ function bindSoundSettings() {
   });
 
   soundSettingsList.dataset.bound = "true";
+}
+
+function renderCosmeticShop() {
+  if (!cosmeticShopList) {
+    return;
+  }
+
+  const account = readAccountRecord();
+  const owned = new Set(account.cosmetics?.owned ?? ["default"]);
+  const equipped = account.cosmetics?.equipped ?? {};
+  const balance = account.wallet?.spendableValue ?? 0;
+
+  cosmeticShopList.innerHTML = `
+    <div class="cosmetic-shop-balance">
+      <span>보유 가치</span>
+      <strong>${formatValue(balance)}</strong>
+    </div>
+    ${COSMETIC_CATALOG.map((item) => {
+      const isOwned = owned.has(item.id);
+      const isEquipped = equipped[item.category] === item.id;
+      const affordable = balance >= item.price;
+      const action = isOwned ? "equipCosmetic" : "purchaseCosmetic";
+      const disabled = isEquipped || (!isOwned && !affordable);
+      const label = isEquipped ? "장착 중" : isOwned ? "장착" : `${formatValue(item.price)} 구매`;
+      return `
+        <article class="cosmetic-shop-item ${isEquipped ? "is-equipped" : ""}">
+          <div>
+            <span>${escapeHtml(item.categoryLabel)}</span>
+            <strong>${escapeHtml(item.label)}</strong>
+            <p>${escapeHtml(item.description)}</p>
+          </div>
+          <button
+            type="button"
+            data-cosmetic-action="${action}"
+            data-cosmetic-id="${item.id}"
+            ${disabled ? "disabled" : ""}
+          >${label}</button>
+        </article>
+      `;
+    }).join("")}
+  `;
+
+  if (cosmeticShopList.dataset.bound !== "true") {
+    cosmeticShopList.addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-cosmetic-action]");
+      if (!button) {
+        return;
+      }
+      sendCosmeticAction(button.dataset.cosmeticAction, button.dataset.cosmeticId);
+    });
+    cosmeticShopList.dataset.bound = "true";
+  }
+}
+
+function sendCosmeticAction(action, itemId) {
+  const item = COSMETIC_CATALOG.find((entry) => entry.id === itemId);
+  if (!item) {
+    return;
+  }
+
+  const ok = sendServerMessage({
+    type: "accountAction",
+    action,
+    itemId,
+    sourceId: lobbySession.localPlayerId,
+    nickname: lobbySession.nickname,
+    at: Date.now()
+  });
+
+  setStartStatus(ok ? `${item.label} 요청을 서버에 전송했습니다.` : "서버 연결 후 상점을 사용할 수 있습니다.");
 }
 
 function bindSimulationControls() {
