@@ -2082,6 +2082,14 @@ function writeJsonStorage(key, value) {
   }
 }
 
+function cloneData(value) {
+  if (typeof structuredClone === "function") {
+    return structuredClone(value);
+  }
+
+  return JSON.parse(JSON.stringify(value));
+}
+
 function getAccountStorageKey() {
   return `${ACCOUNT_STORAGE_PREFIX}${lobbySession.localPlayerId}`;
 }
