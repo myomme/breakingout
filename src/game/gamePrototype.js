@@ -161,6 +161,10 @@ let eventHoldList = null;
 let eventDebugSelect = null;
 let eventDebugRun = null;
 let cosmeticShopList = null;
+let lobbyShopStep = null;
+let lobbyShopList = null;
+let lobbyCustomizeStep = null;
+let lobbyCustomizeList = null;
 let cosmeticShopOverlay = null;
 let cosmeticShopClose = null;
 let accountRegisterOverlay = null;
@@ -561,6 +565,10 @@ function initStartOverlay() {
   startPresenceHeartbeat();
   ensureLobbyShopUi();
   ensureAccountRegisterUi();
+  ensureLobbyShellUi();
+  ensureLobbyShopPanelUi();
+  ensureLobbyCustomizePanelUi();
+  ensureOperationPanelUi();
   bindLobbyEvents();
   startGameButton.addEventListener("click", handleStartGame);
   bootstrap().catch((error) => {
@@ -569,6 +577,208 @@ function initStartOverlay() {
     }
   });
   renderLobby();
+}
+
+function ensureOperationPanelUi() {
+  if (!lobbyStep || lobbyStep.dataset.operationPanelReady === "true") {
+    return;
+  }
+
+  const header = document.createElement("div");
+  header.className = "operation-panel-header";
+  header.innerHTML = `
+    <span>Operation Board</span>
+    <strong>작전 시작</strong>
+    <p>대기 중인 방에 합류하거나 새 레이드 방을 개설하세요.</p>
+  `;
+  lobbyStep.prepend(header);
+
+  const actions = lobbyStep.querySelector(".lobby-actions");
+  if (actions) {
+    actions.classList.add("operation-quick-actions");
+  }
+
+  const listHeader = lobbyStep.querySelector(".room-list-header");
+  if (listHeader) {
+    const title = listHeader.querySelector("h2");
+    if (title) {
+      title.textContent = "대기 중인 작전";
+    }
+  }
+
+  lobbyStep.dataset.operationPanelReady = "true";
+}
+
+function ensureLobbyShopPanelUi() {
+  const panel = document.querySelector(".start-overlay-panel");
+  if (!panel || document.querySelector("#lobbyShopStep")) {
+    lobbyShopStep = document.querySelector("#lobbyShopStep");
+    lobbyShopList = document.querySelector("#lobbyShopList");
+    return;
+  }
+
+  lobbyShopStep = document.createElement("section");
+  lobbyShopStep.id = "lobbyShopStep";
+  lobbyShopStep.className = "lobby-step lobby-shop-step";
+  lobbyShopStep.setAttribute("aria-label", "Shop");
+  lobbyShopStep.innerHTML = `
+    <div class="operation-panel-header">
+      <span>Account Shop</span>
+      <strong>상점</strong>
+      <p>게임 밸런스에 영향을 주지 않는 이름표, 채팅 말풍선, 말 스킨, 칭호만 판매합니다.</p>
+    </div>
+    <div id="lobbyShopList" class="cosmetic-shop-list lobby-shop-list"></div>
+  `;
+
+  panel.insertBefore(lobbyShopStep, startOverlayStatus ?? null);
+  lobbyShopList = lobbyShopStep.querySelector("#lobbyShopList");
+}
+
+function ensureLobbyCustomizePanelUi() {
+  const panel = document.querySelector(".start-overlay-panel");
+  if (!panel || document.querySelector("#lobbyCustomizeStep")) {
+    lobbyCustomizeStep = document.querySelector("#lobbyCustomizeStep");
+    lobbyCustomizeList = document.querySelector("#lobbyCustomizeList");
+    return;
+  }
+
+  lobbyCustomizeStep = document.createElement("section");
+  lobbyCustomizeStep.id = "lobbyCustomizeStep";
+  lobbyCustomizeStep.className = "lobby-step lobby-shop-step lobby-customize-step";
+  lobbyCustomizeStep.setAttribute("aria-label", "Customize");
+  lobbyCustomizeStep.innerHTML = `
+    <div class="operation-panel-header">
+      <span>Operator Customize</span>
+      <strong>커스터마이즈</strong>
+      <p>보유한 외형만 확인하고 현재 장착 중인 이름표, 채팅 효과, 말 스킨, 칭호를 변경합니다.</p>
+    </div>
+    <div id="lobbyCustomizeList" class="cosmetic-shop-list lobby-shop-list lobby-customize-list"></div>
+  `;
+
+  panel.insertBefore(lobbyCustomizeStep, startOverlayStatus ?? null);
+  lobbyCustomizeList = lobbyCustomizeStep.querySelector("#lobbyCustomizeList");
+}
+
+function ensureLobbyShellUi() {
+  const panel = document.querySelector(".start-overlay-panel");
+  if (!panel || panel.dataset.shellReady === "true") {
+    return;
+  }
+
+  const mainMenu = document.createElement("nav");
+  mainMenu.className = "main-lobby-menu";
+  mainMenu.setAttribute("aria-label", "메인 메뉴");
+  mainMenu.innerHTML = `
+    <button class="main-lobby-menu-button is-active" type="button" data-lobby-menu="operations" data-mobile-label="작전">
+      <span>작전 시작</span>
+      <small>방을 만들거나 참가해 레이드에 진입합니다.</small>
+    </button>
+    <button class="main-lobby-menu-button" type="button" data-lobby-menu="customize" data-mobile-label="외형">
+      <span>커스터마이즈</span>
+      <small>보유한 이름표, 말 스킨, 채팅 효과를 확인합니다.</small>
+    </button>
+    <button class="main-lobby-menu-button" type="button" data-lobby-menu="shop" data-mobile-label="상점">
+      <span>상점</span>
+      <small>누적 가치를 사용해 외형 보상을 구매합니다.</small>
+    </button>
+  `;
+
+  const eventPanel = document.createElement("aside");
+  eventPanel.className = "lobby-event-panel";
+  eventPanel.setAttribute("aria-label", "알림과 이벤트");
+  eventPanel.innerHTML = `
+    <div class="lobby-event-panel-header">
+      <span>알림</span>
+      <strong>오늘의 작전</strong>
+    </div>
+    <button type="button">
+      <span>시즌 퀘스트</span>
+      <small>레이드 누적 가치로 보상을 해금하세요.</small>
+    </button>
+    <button type="button">
+      <span>일일 임무</span>
+      <small>생존 탈출 1회, 고급 루팅 1회</small>
+    </button>
+    <button type="button">
+      <span>공지</span>
+      <small>멀티 서버 테스트 진행 중</small>
+    </button>
+  `;
+
+  const accountCard = document.createElement("section");
+  accountCard.id = "lobbyAccountCard";
+  accountCard.className = "lobby-account-card";
+  accountCard.setAttribute("aria-label", "계정 카드");
+  accountCard.innerHTML = `
+    <div class="lobby-account-card-empty">
+      <span>OPERATOR</span>
+      <strong>로그인 필요</strong>
+    </div>
+  `;
+
+  const bottomMenu = document.createElement("nav");
+  bottomMenu.className = "lobby-bottom-menu";
+  bottomMenu.setAttribute("aria-label", "보조 메뉴");
+  bottomMenu.innerHTML = `
+    <button type="button">가이드</button>
+    <button type="button">순위</button>
+    <button type="button">도감</button>
+    <button type="button">임무</button>
+  `;
+
+  const title = panel.querySelector("h1");
+  if (title) {
+    title.textContent = "BREAKING OUT";
+    title.insertAdjacentElement("afterend", mainMenu);
+  } else {
+    panel.prepend(mainMenu);
+  }
+
+  panel.append(accountCard, eventPanel, bottomMenu);
+
+  mainMenu.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-lobby-menu]");
+    if (!button) {
+      return;
+    }
+    handleLobbyMenuAction(button.dataset.lobbyMenu);
+  });
+
+  panel.dataset.shellReady = "true";
+  refreshLobbyShellActiveMenu();
+}
+
+function handleLobbyMenuAction(menu) {
+  refreshLobbyShellActiveMenu(menu);
+
+  if (!lobbySession.accountId && menu !== "operations") {
+    setStartStatus("로그인 후 이용할 수 있습니다.");
+    showLobbyStep("login");
+    return;
+  }
+
+  if (menu === "operations") {
+    showLobbyStep(lobbySession.currentRoom ? "room" : lobbySession.accountId ? "lobby" : "login");
+    setStartStatus(lobbySession.accountId ? "작전 대기실을 선택하세요." : "계정으로 로그인하거나 새 계정을 생성하세요.");
+    return;
+  }
+
+  if (menu === "customize") {
+    openLobbyCustomize();
+    setStartStatus("보유한 외형을 장착할 수 있습니다.");
+    return;
+  }
+
+  if (menu === "shop") {
+    openLobbyShop("shop");
+    setStartStatus("상점에서 누적 가치를 외형 보상으로 교환할 수 있습니다.");
+  }
+}
+
+function refreshLobbyShellActiveMenu(menu = "operations") {
+  document.querySelectorAll("[data-lobby-menu]").forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.lobbyMenu === menu);
+  });
 }
 
 function normalizeLobbyCopy() {
@@ -1693,6 +1903,11 @@ function renderAccountSummary() {
   }
 
   const account = readAccountRecord();
+  const accountCard = document.querySelector("#lobbyAccountCard");
+  if (accountCard) {
+    renderLobbyAccountCard(accountCard, account);
+  }
+
   summary.innerHTML = `
     <span>누적 가치 <b>${formatValue(account.wallet.lifetimeLootValue)}</b></span>
     <span>보유 가치 <b>${formatValue(account.wallet.spendableValue)}</b></span>
@@ -1705,7 +1920,60 @@ function renderAccountSummary() {
     logoutButton.dataset.bound = "true";
   }
 
-  renderAccountProfileCard(account);
+  document.querySelectorAll(".account-profile-card").forEach((card) => card.remove());
+}
+
+function renderLobbyAccountCard(card, account = readAccountRecord()) {
+  const lifetimeValue = Number(account.wallet?.lifetimeLootValue ?? 0);
+  const spendableValue = Number(account.wallet?.spendableValue ?? 0);
+  const level = Math.max(1, Math.min(99, Math.floor(Math.sqrt(lifetimeValue / 35)) + 1));
+  const tier = getAccountTier(lifetimeValue);
+  const completed = account.stats?.gamesCompleted ?? 0;
+  const winRate = completed > 0 ? Math.round((account.stats?.wins ?? 0) / completed * 100) : 0;
+  const equippedTitle = getCosmeticLabel(account.cosmetics?.equipped?.title) || "오퍼레이터";
+  const nameplateClass = getCosmeticClass(account.cosmetics?.equipped?.nameplate, "lobby-account-card--");
+
+  card.className = `lobby-account-card ${nameplateClass}`;
+  card.innerHTML = `
+    <button class="lobby-account-identity" type="button" aria-label="내 계정 전적 보기">
+      <span class="lobby-account-tier">${tier.badge}</span>
+      <span>
+        <strong>${escapeHtml(account.nickname || lobbySession.nickname || "Operator")}</strong>
+        <small>${escapeHtml(equippedTitle)}</small>
+      </span>
+    </button>
+    <div class="lobby-account-meta">
+      <span>Lv. ${level}</span>
+      <span>${tier.label}</span>
+      <span>승률 ${winRate}%</span>
+    </div>
+    <div class="lobby-account-value">
+      <span>보유 가치 <b>${formatValue(spendableValue)}</b></span>
+      <span>누적 가치 <b>${formatValue(lifetimeValue)}</b></span>
+    </div>
+    <div class="lobby-account-actions">
+      <button class="account-shop-open" type="button">상점</button>
+      <button class="account-debug-grant" type="button">+500</button>
+      <button class="logout-account-button logout-account-icon" type="button" aria-label="로그아웃">↗</button>
+    </div>
+  `;
+
+  const identityButton = card.querySelector(".lobby-account-identity");
+  identityButton?.addEventListener("click", () => {
+    setStartStatus(`전적: ${formatValue(account.stats?.wins)}승 / ${formatValue(completed)}게임 / 최고 가치 ${formatValue(account.stats?.bestGameValue)}`);
+  });
+
+  const logoutButton = card.querySelector(".logout-account-icon");
+  logoutButton?.addEventListener("click", logoutAccount);
+  bindAccountProfileActions();
+}
+
+function getAccountTier(value) {
+  if (value >= 5000) return { label: "Blacksite", badge: "B" };
+  if (value >= 2500) return { label: "Elite", badge: "E" };
+  if (value >= 1000) return { label: "Veteran", badge: "V" };
+  if (value >= 300) return { label: "Ranger", badge: "R" };
+  return { label: "Rookie", badge: "I" };
 }
 
 function formatValue(value) {
@@ -1804,7 +2072,7 @@ function bindAccountProfileActions() {
     if (button.dataset.bound === "true") {
       return;
     }
-    button.addEventListener("click", openCosmeticShopModal);
+    button.addEventListener("click", () => openLobbyShop("shop"));
     button.dataset.bound = "true";
   });
 
@@ -1824,15 +2092,26 @@ function renderRoomList() {
 
   const rooms = getStoredRooms().filter((room) => room.status === "waiting");
   if (rooms.length === 0) {
-    roomList.innerHTML = "<li class=\"room-list-empty\">대기 중인 방이 없습니다.</li>";
+    roomList.innerHTML = `
+      <li class="room-list-empty">
+        <strong>대기 중인 작전 없음</strong>
+        <span>새 방을 만들거나 친구의 방 번호를 입력해 입장하세요.</span>
+      </li>
+    `;
     return;
   }
 
   roomList.innerHTML = rooms.map((room) => `
-    <li>
-      <div>
+    <li class="operation-room-card">
+      <div class="operation-room-main">
+        <span class="operation-room-label">Room</span>
         <strong>${room.id}</strong>
-        <span>${escapeHtml(room.players?.[0]?.nickname ?? "Host")} / ${room.players?.length ?? 0}/${room.maxPlayers} / COM ${room.comCount ?? 0} / ${escapeHtml(room.mapPackage?.name ?? DEFAULT_MAP_NAME)}</span>
+        <span>${escapeHtml(room.mapPackage?.name ?? DEFAULT_MAP_NAME)}</span>
+      </div>
+      <div class="operation-room-meta">
+        <span>HOST ${escapeHtml(room.players?.[0]?.nickname ?? "Host")}</span>
+        <span>${room.players?.length ?? 0}/${room.maxPlayers}</span>
+        <span>COM ${room.comCount ?? 0}</span>
       </div>
       <button type="button" data-room-id="${room.id}">입장</button>
     </li>
@@ -2061,12 +2340,22 @@ function showLobbyStep(step) {
   const activeMap = {
     login: loginStep,
     lobby: lobbyStep,
-    room: roomStep
+    room: roomStep,
+    shop: lobbyShopStep ?? document.querySelector("#lobbyShopStep"),
+    customize: lobbyCustomizeStep ?? document.querySelector("#lobbyCustomizeStep")
   };
 
-  [loginStep, lobbyStep, roomStep].forEach((element) => {
+  [loginStep, lobbyStep, roomStep, activeMap.shop, activeMap.customize].forEach((element) => {
     element?.classList.toggle("is-active", element === activeMap[step]);
   });
+
+  if (step === "login" || step === "lobby" || step === "room") {
+    refreshLobbyShellActiveMenu("operations");
+  } else if (step === "shop") {
+    refreshLobbyShellActiveMenu("shop");
+  } else if (step === "customize") {
+    refreshLobbyShellActiveMenu("customize");
+  }
 }
 
 function setStartStatus(message) {
@@ -2378,6 +2667,32 @@ function openCosmeticShopModal() {
   if (cosmeticShopOverlay) {
     cosmeticShopOverlay.hidden = false;
   }
+}
+
+function openLobbyShop(mode = "shop") {
+  if (!lobbySession.accountId) {
+    showLobbyStep("login");
+    setStartStatus("로그인 후 이용할 수 있습니다.");
+    return;
+  }
+
+  ensureLobbyShopPanelUi();
+  renderCosmeticShop();
+  showLobbyStep("shop");
+  refreshLobbyShellActiveMenu(mode === "customize" ? "customize" : "shop");
+}
+
+function openLobbyCustomize() {
+  if (!lobbySession.accountId) {
+    showLobbyStep("login");
+    setStartStatus("로그인 후 이용할 수 있습니다.");
+    return;
+  }
+
+  ensureLobbyCustomizePanelUi();
+  renderCosmeticShop();
+  showLobbyStep("customize");
+  refreshLobbyShellActiveMenu("customize");
 }
 
 function closeCosmeticShopModal() {
@@ -4804,7 +5119,9 @@ function keepLoadoutPanelInViewport() {
 }
 
 function renderCosmeticShop() {
-  if (!cosmeticShopList) {
+  const lists = [cosmeticShopList, lobbyShopList].filter(Boolean);
+  const customizeLists = [lobbyCustomizeList].filter(Boolean);
+  if (lists.length === 0 && customizeLists.length === 0) {
     return;
   }
 
@@ -4813,52 +5130,90 @@ function renderCosmeticShop() {
   const equipped = account.cosmetics?.equipped ?? {};
   const balance = account.wallet?.spendableValue ?? 0;
 
-  cosmeticShopList.innerHTML = `
+  const shopMarkup = `
     <div class="cosmetic-shop-balance">
       <span>보유 가치</span>
       <strong>${formatValue(balance)}</strong>
     </div>
-    ${COSMETIC_CATALOG.map((item) => {
-      const isOwned = owned.has(item.id);
-      const isEquipped = equipped[item.category] === item.id;
-      const affordable = balance >= item.price;
-      const action = isOwned ? "equipCosmetic" : "purchaseCosmetic";
-      const disabled = isEquipped || (!isOwned && !affordable);
-      const label = isEquipped ? "장착 중" : isOwned ? "장착" : `${formatValue(item.price)} 구매`;
-      return `
-        <article class="cosmetic-shop-item ${isEquipped ? "is-equipped" : ""}">
-          <div class="cosmetic-shop-preview ${getCosmeticClass(item.id, "cosmetic-preview--")}">
-            <span>${escapeHtml(item.preview ?? item.categoryLabel)}</span>
-          </div>
-          <div class="cosmetic-shop-copy">
-            <div class="cosmetic-shop-meta">
-              <span>${escapeHtml(item.categoryLabel)}</span>
-              <em>${escapeHtml(item.rarity ?? "Standard")}</em>
-            </div>
-            <strong>${escapeHtml(item.label)}</strong>
-            <p>${escapeHtml(item.description)}</p>
-          </div>
-          <button
-            type="button"
-            data-cosmetic-action="${action}"
-            data-cosmetic-id="${item.id}"
-            ${disabled ? "disabled" : ""}
-          >${label}</button>
-        </article>
-      `;
-    }).join("")}
+    ${COSMETIC_CATALOG.map((item) => renderCosmeticItem(item, account, { mode: "shop", owned, equipped, balance })).join("")}
   `;
 
-  if (cosmeticShopList.dataset.bound !== "true") {
-    cosmeticShopList.addEventListener("click", (event) => {
-      const button = event.target.closest("button[data-cosmetic-action]");
-      if (!button) {
-        return;
-      }
-      sendCosmeticAction(button.dataset.cosmeticAction, button.dataset.cosmeticId);
-    });
-    cosmeticShopList.dataset.bound = "true";
+  const ownedItems = COSMETIC_CATALOG.filter((item) => owned.has(item.id));
+  const customizeMarkup = `
+    <div class="cosmetic-shop-balance customize-summary">
+      <span>보유 외형</span>
+      <strong>${ownedItems.length}</strong>
+    </div>
+    ${ownedItems.length > 0 ? ownedItems.map((item) => renderCosmeticItem(item, account, {
+      mode: "customize",
+      owned,
+      equipped,
+      balance
+    })).join("") : `
+      <article class="cosmetic-shop-item customize-empty">
+        <div class="cosmetic-shop-copy">
+          <strong>보유한 외형이 없습니다.</strong>
+          <p>상점에서 외형을 구매하면 이곳에서 장착을 바꿀 수 있습니다.</p>
+        </div>
+      </article>
+    `}
+  `;
+
+  lists.forEach((list) => {
+    bindCosmeticList(list, shopMarkup);
+  });
+
+  customizeLists.forEach((list) => {
+    bindCosmeticList(list, customizeMarkup);
+  });
+}
+
+function renderCosmeticItem(item, account, context) {
+  const isOwned = context.owned.has(item.id);
+  const isEquipped = context.equipped[item.category] === item.id;
+  const affordable = context.balance >= item.price;
+  const action = isOwned ? "equipCosmetic" : "purchaseCosmetic";
+  const disabled = isEquipped || (!isOwned && !affordable);
+  const label = isEquipped ? "장착 중" : context.mode === "customize" ? "장착" : isOwned ? "장착" : `${formatValue(item.price)} 구매`;
+  const stateLabel = isEquipped ? "Equipped" : isOwned ? "Owned" : "Locked";
+
+  return `
+    <article class="cosmetic-shop-item ${isEquipped ? "is-equipped" : ""} ${context.mode === "customize" ? "is-owned" : ""}">
+      <div class="cosmetic-shop-preview ${getCosmeticClass(item.id, "cosmetic-preview--")}">
+        <span>${escapeHtml(item.preview ?? item.categoryLabel)}</span>
+      </div>
+      <div class="cosmetic-shop-copy">
+        <div class="cosmetic-shop-meta">
+          <span>${escapeHtml(item.categoryLabel)}</span>
+          <em>${escapeHtml(item.rarity ?? "Standard")}</em>
+          <em>${stateLabel}</em>
+        </div>
+        <strong>${escapeHtml(item.label)}</strong>
+        <p>${escapeHtml(item.description)}</p>
+      </div>
+      <button
+        type="button"
+        data-cosmetic-action="${action}"
+        data-cosmetic-id="${item.id}"
+        ${disabled ? "disabled" : ""}
+      >${label}</button>
+    </article>
+  `;
+}
+
+function bindCosmeticList(list, markup) {
+  list.innerHTML = markup;
+  if (list.dataset.bound === "true") {
+    return;
   }
+  list.addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-cosmetic-action]");
+    if (!button) {
+      return;
+    }
+    sendCosmeticAction(button.dataset.cosmeticAction, button.dataset.cosmeticId);
+  });
+  list.dataset.bound = "true";
 }
 
 function sendCosmeticAction(action, itemId) {
