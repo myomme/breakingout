@@ -88,8 +88,11 @@ const startGameButton = document.querySelector("#startGameButton");
 const loginStep = document.querySelector("#loginStep");
 const lobbyStep = document.querySelector("#lobbyStep");
 const roomStep = document.querySelector("#roomStep");
+const accountIdInput = document.querySelector("#accountIdInput");
+const accountPasswordInput = document.querySelector("#accountPasswordInput");
 const nicknameInput = document.querySelector("#nicknameInput");
 const enterLobbyButton = document.querySelector("#enterLobbyButton");
+const registerAccountButton = document.querySelector("#registerAccountButton");
 const lobbyNickname = document.querySelector("#lobbyNickname");
 const createRoomButton = document.querySelector("#createRoomButton");
 const roomCodeInput = document.querySelector("#roomCodeInput");
@@ -192,6 +195,7 @@ let roomStoreCache = [];
 const ROOM_STORAGE_KEY = "breakingOutPrototypeRooms";
 const LOCAL_PLAYER_STORAGE_KEY = "breakingOutPrototypePlayer";
 const SESSION_PLAYER_ID_KEY = "breakingOutPrototypeSessionPlayerId";
+const ACCOUNT_SESSION_STORAGE_KEY = "breakingOutPrototypeAccountSession";
 const SESSION_ROOM_ID_KEY = "breakingOutPrototypeSessionRoomId";
 const ACCOUNT_STORAGE_PREFIX = "breakingOutPrototypeAccount:";
 const ROOM_SYNC_CHANNEL = "breakingOutPrototypeRoomSync";
@@ -510,6 +514,9 @@ const AI_PROFILE_SETTINGS = {
 function createEmptyLobbySession() {
   return {
     localPlayerId: createLocalId("player"),
+    accountId: null,
+    username: "",
+    sessionToken: "",
     nickname: "",
     currentRoom: null
   };
@@ -560,7 +567,8 @@ function initStartOverlay() {
 function normalizeLobbyCopy() {
   const textBySelector = new Map([
     [".start-overlay-panel h1", "레이드 로비"],
-    ["#enterLobbyButton", "로비 입장"],
+    ["#enterLobbyButton", "로그인"],
+    ["#registerAccountButton", "계정 생성"],
     ["#createRoomButton", "방 만들기"],
     ["#joinRoomButton", "방 번호 입장"],
     [".room-list-header h2", "방 목록"],
@@ -569,7 +577,7 @@ function normalizeLobbyCopy() {
     ["#addMockPlayerButton", "테스트 플레이어 추가"],
     ["#clearMockPlayersButton", "테스트 인원 비우기"],
     ["#startGameButton", "게임 시작"],
-    ["#startOverlayStatus", "닉네임을 입력하고 로비에 입장하세요."]
+    ["#startOverlayStatus", "계정으로 로그인하거나 새 계정을 생성하세요."]
   ]);
 
   textBySelector.forEach((text, selector) => {
@@ -579,7 +587,15 @@ function normalizeLobbyCopy() {
     }
   });
 
-  const nicknameLabel = document.querySelector("#loginStep .start-option-field span");
+  const accountIdLabel = document.querySelector("label[for='accountIdInput'] span") ?? accountIdInput?.closest(".start-option-field")?.querySelector("span");
+  if (accountIdLabel) accountIdLabel.textContent = "계정 ID";
+  if (accountIdInput) accountIdInput.placeholder = "영문/숫자 3~20자";
+
+  const passwordLabel = document.querySelector("label[for='accountPasswordInput'] span") ?? accountPasswordInput?.closest(".start-option-field")?.querySelector("span");
+  if (passwordLabel) passwordLabel.textContent = "비밀번호";
+  if (accountPasswordInput) accountPasswordInput.placeholder = "비밀번호";
+
+  const nicknameLabel = nicknameInput?.closest(".start-option-field")?.querySelector("span");
   if (nicknameLabel) nicknameLabel.textContent = "닉네임";
   if (nicknameInput) nicknameInput.placeholder = "닉네임 입력";
 
@@ -975,12 +991,13 @@ function syncPlayersFromSlots(room) {
 
 function bindLobbyEvents() {
   ensureSessionChatUi();
-  enterLobbyButton?.addEventListener("click", enterLobby);
-  nicknameInput?.addEventListener("keydown", (event) => {
+  enterLobbyButton?.addEventListener("click", () => authenticateAccount("login"));
+  registerAccountButton?.addEventListener("click", () => authenticateAccount("register"));
+  [accountIdInput, accountPasswordInput, nicknameInput].forEach((input) => input?.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
-      enterLobby();
+      authenticateAccount("login");
     }
-  });
+  }));
   createRoomButton?.addEventListener("click", () => {
     void createRoom();
   });
@@ -1027,6 +1044,14 @@ function restoreLobbySession() {
   } catch {
     // Ignore storage cleanup failures.
   }
+  if (accountIdInput) {
+    accountIdInput.value = "";
+    accountIdInput.removeAttribute("value");
+  }
+  if (accountPasswordInput) {
+    accountPasswordInput.value = "";
+    accountPasswordInput.removeAttribute("value");
+  }
   if (nicknameInput) {
     nicknameInput.value = "";
     nicknameInput.removeAttribute("value");
@@ -1048,6 +1073,36 @@ function getSessionPlayerId() {
   } catch {
     return lobbySession.localPlayerId || createLocalId("player");
   }
+}
+
+function readStoredAccountSession() {
+  return readJsonStorage(ACCOUNT_SESSION_STORAGE_KEY, null);
+}
+
+function rememberAccountSession(account, sessionToken) {
+  writeJsonStorage(ACCOUNT_SESSION_STORAGE_KEY, {
+    accountId: account.accountId,
+    username: account.username ?? "",
+    nickname: account.nickname ?? "",
+    sessionToken,
+    savedAt: Date.now()
+  });
+}
+
+function requestAccountResume() {
+  const saved = readStoredAccountSession();
+  if (!saved?.accountId || !saved?.sessionToken) {
+    return false;
+  }
+
+  return sendServerMessage({
+    type: "accountAuth",
+    action: "resume",
+    accountId: saved.accountId,
+    sessionToken: saved.sessionToken,
+    sourceId: lobbySession.localPlayerId,
+    at: Date.now()
+  });
 }
 
 function restoreRoomFromSession() {
@@ -1109,22 +1164,82 @@ function shouldRemoveStoredRoom(room, now = Date.now()) {
     age > 24 * 60 * 60 * 1000;
 }
 
-function enterLobby() {
+function authenticateAccount(action = "login") {
+  const username = normalizeAccountUsername(accountIdInput?.value);
+  const password = String(accountPasswordInput?.value ?? "");
   const nickname = normalizeNickname(nicknameInput?.value);
-  if (!nickname) {
-    setStartStatus("닉네임을 입력하세요.");
+
+  if (!username) {
+    setStartStatus("계정 ID는 영문/숫자/밑줄 3~20자로 입력하세요.");
+    accountIdInput?.focus();
+    return;
+  }
+
+  if (password.length < 4) {
+    setStartStatus("비밀번호는 최소 4자 이상 입력하세요.");
+    accountPasswordInput?.focus();
+    return;
+  }
+
+  if (action === "register" && !nickname) {
+    setStartStatus("계정 생성 시 사용할 닉네임을 입력하세요.");
     nicknameInput?.focus();
     return;
   }
 
-  lobbySession.nickname = nickname;
-  const account = readAccountRecord();
-  account.nickname = nickname;
+  if (!sendServerMessage({
+    type: "accountAuth",
+    action,
+    username,
+    password,
+    nickname,
+    sourceId: lobbySession.localPlayerId,
+    at: Date.now()
+  })) {
+    setStartStatus("서버 연결 후 계정 로그인을 사용할 수 있습니다.");
+    return;
+  }
+
+  setStartStatus(action === "register" ? "계정 생성을 요청했습니다." : "로그인 중입니다.");
+}
+
+function normalizeAccountUsername(value) {
+  const username = String(value ?? "").trim().toLowerCase();
+  return /^[a-z0-9_]{3,20}$/.test(username) ? username : "";
+}
+
+function completeAccountLogin({ account, sessionToken }) {
+  if (!account?.accountId || !sessionToken) {
+    setStartStatus("계정 로그인 응답이 올바르지 않습니다.");
+    return;
+  }
+
+  const previousId = lobbySession.localPlayerId;
+  lobbySession.localPlayerId = account.accountId;
+  lobbySession.accountId = account.accountId;
+  lobbySession.username = account.username ?? "";
+  lobbySession.sessionToken = sessionToken;
+  lobbySession.nickname = account.nickname || lobbySession.username || "Player";
+  rememberAccountSession(account, sessionToken);
+  try {
+    sessionStorage.setItem(SESSION_PLAYER_ID_KEY, account.accountId);
+  } catch {
+    // Ignore session persistence failures.
+  }
+  if (previousId !== lobbySession.localPlayerId) {
+    pendingRoomActions.clear();
+  }
+  if (nicknameInput) {
+    nicknameInput.value = lobbySession.nickname;
+  }
+  if (accountPasswordInput) {
+    accountPasswordInput.value = "";
+  }
   writeAccountRecord(account);
-  requestServerAccount();
   showLobbyStep("lobby");
   renderLobby();
-  setStartStatus("방을 만들거나 방 번호로 입장하세요.");
+  requestServerRooms();
+  setStartStatus(`${lobbySession.nickname} 계정으로 접속했습니다.`);
 }
 
 async function createRoom() {
@@ -2323,7 +2438,7 @@ function initServerSync() {
       serverReconnectTimer = 0;
     }
     requestServerRooms();
-    requestServerAccount();
+    requestAccountResume();
     if (lobbySession.currentRoom?.id) {
       requestServerGameSnapshot(lobbySession.currentRoom.id);
       requestChatHistory(lobbySession.currentRoom.id);
@@ -2369,6 +2484,15 @@ function handleServerMessage(message) {
 
   if (message.type === "serverError") {
     setStartStatus(`서버 오류: ${message.message ?? "알 수 없는 오류"}`);
+    return;
+  }
+
+  if (message.type === "accountAuthResult") {
+    if (message.ok) {
+      completeAccountLogin(message);
+    } else {
+      setStartStatus(message.message || "계정 인증에 실패했습니다.");
+    }
     return;
   }
 

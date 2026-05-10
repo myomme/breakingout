@@ -15,10 +15,21 @@
 
         <section id="loginStep" class="lobby-step is-active" aria-label="Login">
           <label class="start-option-field">
+            <span>Account ID</span>
+            <input id="accountIdInput" type="text" maxlength="20" placeholder="계정 ID" autocomplete="username" value="">
+          </label>
+          <label class="start-option-field">
+            <span>Password</span>
+            <input id="accountPasswordInput" type="password" maxlength="64" placeholder="비밀번호" autocomplete="current-password" value="">
+          </label>
+          <label class="start-option-field">
             <span>Nickname</span>
             <input id="nicknameInput" type="text" maxlength="18" placeholder="닉네임 입력" autocomplete="off" value="">
           </label>
-          <button id="enterLobbyButton" type="button">로비 입장</button>
+          <div class="account-auth-actions">
+            <button id="enterLobbyButton" type="button">로그인</button>
+            <button id="registerAccountButton" type="button">계정 생성</button>
+          </div>
         </section>
 
         <section id="lobbyStep" class="lobby-step" aria-label="Lobby">

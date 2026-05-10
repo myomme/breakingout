@@ -382,6 +382,16 @@ body {
   align-items: end;
 }
 
+.account-auth-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.account-auth-actions button {
+  min-height: 42px;
+}
+
 .lobby-test-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -3026,7 +3036,12 @@ dd {
     gap: 9px;
   }
 
+  .account-auth-actions {
+    grid-template-columns: 1fr;
+  }
+
   .lobby-actions > button,
+  .account-auth-actions > button,
   .lobby-test-actions > button,
   .room-header > button,
   .room-list-header > button,

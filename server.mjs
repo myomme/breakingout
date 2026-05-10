@@ -215,7 +215,12 @@ function handleMessage(client, message) {
 
   if (message.type === "getAccount") {
     const account = getAccountRecord(message.sourceId, message.nickname);
-    sendJson(client, { type: "accountUpdated", sourceId: "server", account, at: Date.now() });
+    sendJson(client, { type: "accountUpdated", sourceId: "server", account: sanitizeAccountForClient(account), at: Date.now() });
+    return;
+  }
+
+  if (message.type === "accountAuth") {
+    handleAccountAuth(client, message);
     return;
   }
 
@@ -356,6 +361,10 @@ function normalizeAccount(account, playerId, nickname = "") {
     wallet: { ...base.wallet, ...(account?.wallet ?? {}) },
     stats: { ...base.stats, ...(account?.stats ?? {}) },
     cosmetics: { ...base.cosmetics, ...(account?.cosmetics ?? {}) },
+    username: account?.username ?? null,
+    passwordSalt: account?.passwordSalt ?? null,
+    passwordHash: account?.passwordHash ?? null,
+    sessions: Array.isArray(account?.sessions) ? account.sessions : [],
     appliedGameResults: Array.isArray(account?.appliedGameResults) ? account.appliedGameResults : []
   };
 }
@@ -369,6 +378,141 @@ function getAccountRecord(playerId, nickname = "") {
     scheduleAccountSave();
   }
   return account;
+}
+
+function handleAccountAuth(client, message) {
+  const action = String(message.action ?? "");
+  if (action === "register") {
+    registerAccount(client, message);
+    return;
+  }
+  if (action === "login") {
+    loginAccount(client, message);
+    return;
+  }
+  if (action === "resume") {
+    resumeAccount(client, message);
+    return;
+  }
+  sendJson(client, { type: "accountAuthResult", sourceId: "server", ok: false, message: "Unknown account auth action", at: Date.now() });
+}
+
+function registerAccount(client, message) {
+  const username = normalizeUsername(message.username);
+  const password = String(message.password ?? "");
+  const nickname = String(message.nickname ?? username).trim().slice(0, 18) || username;
+  if (!username) {
+    sendAccountAuthFailure(client, "계정 ID는 영문/숫자/밑줄 3~20자로 입력하세요.");
+    return;
+  }
+  if (password.length < 4) {
+    sendAccountAuthFailure(client, "비밀번호는 최소 4자 이상이어야 합니다.");
+    return;
+  }
+
+  const accountId = getRegisteredAccountId(username);
+  if (accounts.has(accountId)) {
+    sendAccountAuthFailure(client, "이미 존재하는 계정 ID입니다.");
+    return;
+  }
+
+  const salt = crypto.randomBytes(16).toString("hex");
+  const account = {
+    ...createDefaultAccount(accountId, nickname),
+    accountId,
+    username,
+    passwordSalt: salt,
+    passwordHash: hashPassword(password, salt),
+    sessions: []
+  };
+  accounts.set(accountId, account);
+  completeAccountAuth(client, account);
+}
+
+function loginAccount(client, message) {
+  const username = normalizeUsername(message.username);
+  const password = String(message.password ?? "");
+  const accountId = getRegisteredAccountId(username);
+  const account = accounts.get(accountId);
+  if (!username || !account?.passwordHash || !account.passwordSalt) {
+    sendAccountAuthFailure(client, "계정 ID 또는 비밀번호가 올바르지 않습니다.");
+    return;
+  }
+  if (hashPassword(password, account.passwordSalt) !== account.passwordHash) {
+    sendAccountAuthFailure(client, "계정 ID 또는 비밀번호가 올바르지 않습니다.");
+    return;
+  }
+  completeAccountAuth(client, normalizeAccount(account, accountId, account.nickname));
+}
+
+function resumeAccount(client, message) {
+  const accountId = String(message.accountId ?? "");
+  const account = normalizeAccount(accounts.get(accountId), accountId);
+  const tokenHash = hashSessionToken(message.sessionToken);
+  if (!account?.accountId || !tokenHash || !account.sessions.some((session) => session.tokenHash === tokenHash)) {
+    sendAccountAuthFailure(client, "저장된 로그인 세션이 만료되었습니다.");
+    return;
+  }
+  account.sessions = account.sessions.map((session) => (
+    session.tokenHash === tokenHash ? { ...session, lastSeen: Date.now() } : session
+  ));
+  accounts.set(accountId, account);
+  scheduleAccountSave();
+  sendJson(client, {
+    type: "accountAuthResult",
+    sourceId: "server",
+    ok: true,
+    account: sanitizeAccountForClient(account),
+    sessionToken: message.sessionToken,
+    at: Date.now()
+  });
+}
+
+function completeAccountAuth(client, account) {
+  const sessionToken = crypto.randomBytes(32).toString("hex");
+  const normalized = normalizeAccount(account, account.accountId, account.nickname);
+  normalized.sessions = [
+    { tokenHash: hashSessionToken(sessionToken), createdAt: Date.now(), lastSeen: Date.now() },
+    ...(normalized.sessions ?? [])
+  ].slice(0, 6);
+  normalized.updatedAt = Date.now();
+  accounts.set(normalized.accountId, normalized);
+  scheduleAccountSave();
+  sendJson(client, {
+    type: "accountAuthResult",
+    sourceId: "server",
+    ok: true,
+    account: sanitizeAccountForClient(normalized),
+    sessionToken,
+    at: Date.now()
+  });
+}
+
+function sendAccountAuthFailure(client, message) {
+  sendJson(client, { type: "accountAuthResult", sourceId: "server", ok: false, message, at: Date.now() });
+}
+
+function normalizeUsername(value) {
+  const username = String(value ?? "").trim().toLowerCase();
+  return /^[a-z0-9_]{3,20}$/.test(username) ? username : "";
+}
+
+function getRegisteredAccountId(username) {
+  return `acct_${username}`;
+}
+
+function hashPassword(password, salt) {
+  return crypto.pbkdf2Sync(String(password), salt, 120000, 32, "sha256").toString("hex");
+}
+
+function hashSessionToken(token) {
+  if (!token) return "";
+  return crypto.createHash("sha256").update(String(token)).digest("hex");
+}
+
+function sanitizeAccountForClient(account) {
+  const { passwordHash, passwordSalt, sessions, ...publicAccount } = account;
+  return publicAccount;
 }
 
 function handleGameResult(client, message) {
@@ -418,7 +562,7 @@ function handleGameResult(client, message) {
     scheduleAccountSave();
   }
 
-  sendJson(client, { type: "accountUpdated", sourceId: "server", account, at: Date.now() });
+  sendJson(client, { type: "accountUpdated", sourceId: "server", account: sanitizeAccountForClient(account), at: Date.now() });
 }
 
 function handleAccountAction(client, message) {
@@ -438,7 +582,7 @@ function handleAccountAction(client, message) {
     account.updatedAt = Date.now();
     accounts.set(playerId, account);
     scheduleAccountSave();
-    sendJson(client, { type: "accountUpdated", sourceId: "server", account, at: Date.now() });
+    sendJson(client, { type: "accountUpdated", sourceId: "server", account: sanitizeAccountForClient(account), at: Date.now() });
     return;
   }
 
@@ -452,7 +596,7 @@ function handleAccountAction(client, message) {
 
   if (action === "purchaseCosmetic") {
     if (owned.has(item.id)) {
-      sendJson(client, { type: "accountUpdated", sourceId: "server", account, at: Date.now() });
+      sendJson(client, { type: "accountUpdated", sourceId: "server", account: sanitizeAccountForClient(account), at: Date.now() });
       return;
     }
     if ((account.wallet.spendableValue ?? 0) < item.price) {
@@ -481,7 +625,7 @@ function handleAccountAction(client, message) {
   accounts.set(playerId, account);
   syncAccountCosmeticsToRooms(playerId, account.cosmetics);
   scheduleAccountSave();
-  sendJson(client, { type: "accountUpdated", sourceId: "server", account, at: Date.now() });
+  sendJson(client, { type: "accountUpdated", sourceId: "server", account: sanitizeAccountForClient(account), at: Date.now() });
   broadcastRooms("accountCosmetics");
 }
 
