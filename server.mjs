@@ -17,6 +17,7 @@ const MAX_CHAT_MESSAGES = 80;
 const ACCOUNT_DB_PATH = path.join(__dirname, "data", "serverAccounts.json");
 const ACCOUNT_RESULT_HISTORY_LIMIT = 80;
 const ACCOUNT_SESSION_TTL_MS = 14 * 24 * 60 * 60 * 1000;
+const ADMIN_KEY = process.env.ADMIN_KEY ?? "";
 const accounts = await loadAccounts();
 let accountSaveTimer = 0;
 
@@ -47,6 +48,11 @@ const server = http.createServer(async (request, response) => {
         accounts: accounts.size,
         uptime: Math.floor(process.uptime())
       }));
+      return;
+    }
+
+    if (url.pathname === "/admin/accounts") {
+      handleAdminAccountsRequest(request, response, url);
       return;
     }
 
@@ -192,6 +198,50 @@ function readClientJson(client, data) {
         detail: error.message
       });
     }
+}
+
+function handleAdminAccountsRequest(request, response, url) {
+  if (!ADMIN_KEY) {
+    response.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+    response.end("Not found");
+    return;
+  }
+
+  const providedKey = request.headers["x-admin-key"] ?? url.searchParams.get("key");
+  if (providedKey !== ADMIN_KEY) {
+    response.writeHead(403, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+    response.end(JSON.stringify({ ok: false, message: "Forbidden" }));
+    return;
+  }
+
+  const rows = [...accounts.values()]
+    .map((account) => sanitizeAccountForAdmin(normalizeAccount(account, account.accountId, account.nickname)))
+    .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
+
+  response.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+  response.end(JSON.stringify({
+    ok: true,
+    count: rows.length,
+    sessionTtlDays: Math.round(ACCOUNT_SESSION_TTL_MS / (24 * 60 * 60 * 1000)),
+    accounts: rows
+  }, null, 2));
+}
+
+function sanitizeAccountForAdmin(account) {
+  const publicAccount = sanitizeAccountForClient(account);
+  return {
+    accountId: publicAccount.accountId,
+    username: publicAccount.username ?? null,
+    nickname: publicAccount.nickname,
+    createdAt: publicAccount.createdAt,
+    updatedAt: publicAccount.updatedAt,
+    wallet: publicAccount.wallet,
+    stats: publicAccount.stats,
+    cosmetics: publicAccount.cosmetics,
+    lastGame: publicAccount.lastGame,
+    appliedGameResultsCount: publicAccount.appliedGameResults?.length ?? 0,
+    activeSessions: account.sessions?.length ?? 0
+  };
 }
 
 function handleMessage(client, message) {
