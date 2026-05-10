@@ -228,7 +228,9 @@ const COSMETIC_CATALOG = [
     category: "nameplate",
     categoryLabel: "이름표",
     label: "레인저 플레이트",
-    description: "로비 프로필에 녹색 작전 이름표를 적용합니다.",
+    rarity: "Field",
+    preview: "RANGER",
+    description: "프로필에 녹색 작전 라인을 두르고, 로비에서 생존자 느낌을 확실히 보여줍니다.",
     price: 80
   },
   {
@@ -236,7 +238,9 @@ const COSMETIC_CATALOG = [
     category: "nameplate",
     categoryLabel: "이름표",
     label: "블랙사이트 플레이트",
-    description: "로비 프로필에 어두운 고급 이름표를 적용합니다.",
+    rarity: "Elite",
+    preview: "BLACK",
+    description: "어두운 보라빛 글로우가 들어간 고급 이름표입니다. 방 목록에서 제일 차갑게 보입니다.",
     price: 160
   },
   {
@@ -244,7 +248,9 @@ const COSMETIC_CATALOG = [
     category: "chatBubble",
     categoryLabel: "채팅",
     label: "무전 말풍선",
-    description: "내 채팅 말풍선에 무전기 스타일 테두리를 적용합니다.",
+    rarity: "Field",
+    preview: "RADIO",
+    description: "채팅에 녹색 무전 테두리를 적용합니다. 팀 보이스 없는 전장 느낌을 줍니다.",
     price: 60
   },
   {
@@ -252,7 +258,9 @@ const COSMETIC_CATALOG = [
     category: "chatBubble",
     categoryLabel: "채팅",
     label: "앰버 말풍선",
-    description: "내 채팅 말풍선에 주황색 작전 표시를 적용합니다.",
+    rarity: "Rare",
+    preview: "AMBER",
+    description: "주황색 경고등 같은 말풍선입니다. 메시지가 로그 사이에서도 눈에 잘 들어옵니다.",
     price: 140
   },
   {
@@ -260,7 +268,9 @@ const COSMETIC_CATALOG = [
     category: "tokenSkin",
     categoryLabel: "말",
     label: "화이트 링",
-    description: "내 말 주변의 링을 더 선명하게 표시합니다.",
+    rarity: "Field",
+    preview: "○",
+    description: "내 말 주변을 하얀 링으로 강조합니다. 전술 지도 위에서 위치 식별이 훨씬 쉬워집니다.",
     price: 90
   },
   {
@@ -268,7 +278,9 @@ const COSMETIC_CATALOG = [
     category: "tokenSkin",
     categoryLabel: "말",
     label: "엠버 토큰",
-    description: "내 말에 붉은 작전 식별색을 적용합니다.",
+    rarity: "Elite",
+    preview: "●",
+    description: "붉은 엠버 색 말 스킨입니다. 상대 화면에서도 같은 색상으로 표시됩니다.",
     price: 180
   },
   {
@@ -276,7 +288,9 @@ const COSMETIC_CATALOG = [
     category: "title",
     categoryLabel: "칭호",
     label: "신입 오퍼레이터",
-    description: "프로필 이름 아래에 신입 오퍼레이터 칭호를 표시합니다.",
+    rarity: "Common",
+    preview: "ROOKIE",
+    description: "이제 막 레이드에 들어온 신입 칭호입니다. 싸지만 첫 장식으로 딱 좋습니다.",
     price: 50
   },
   {
@@ -284,7 +298,9 @@ const COSMETIC_CATALOG = [
     category: "title",
     categoryLabel: "칭호",
     label: "컨트랙터",
-    description: "프로필 이름 아래에 컨트랙터 칭호를 표시합니다.",
+    rarity: "Rare",
+    preview: "CONTRACT",
+    description: "돈 받고 들어온 전문 계약자 칭호입니다. 전적 카드에 조금 더 무게감을 줍니다.",
     price: 130
   }
 ];
@@ -783,7 +799,7 @@ function getConfiguredPlayerLoadouts() {
         isAi: false,
         weaponId: slot.weaponId ?? "AR",
         armorId: slot.armorId ?? "lightSet",
-        cosmetics: slot.playerId === lobbySession.localPlayerId ? readAccountRecord().cosmetics : null
+        cosmetics: slot.playerId === lobbySession.localPlayerId ? readAccountRecord().cosmetics : slot.cosmetics ?? null
       };
     });
 }
@@ -900,7 +916,8 @@ function createDefaultRoomSlots(room = lobbySession.currentRoom) {
       lastSeen: player.lastSeen ?? Date.now(),
       disconnectedAt: player.disconnectedAt ?? null,
       weaponId: player.weaponId ?? slots[index].weaponId,
-      armorId: player.armorId ?? slots[index].armorId
+      armorId: player.armorId ?? slots[index].armorId,
+      cosmetics: player.cosmetics ?? (player.id === lobbySession.localPlayerId ? readAccountRecord().cosmetics : null)
     };
   });
 
@@ -945,6 +962,7 @@ function syncPlayersFromSlots(room) {
       ready: slot.playerId === room.hostId || Boolean(slot.ready),
       weaponId: slot.weaponId,
       armorId: slot.armorId,
+      cosmetics: slot.cosmetics ?? null,
       isMock: slot.isMock,
       connected: slot.connected !== false,
       lastSeen: slot.lastSeen ?? Date.now(),
@@ -1489,6 +1507,7 @@ function createRoomPlayer() {
     lastSeen: Date.now(),
     disconnectedAt: null,
     isHost: false,
+    cosmetics: readAccountRecord().cosmetics,
     joinedAt: Date.now()
   };
 }
@@ -2231,7 +2250,20 @@ function handleServerAccountUpdated(account) {
   });
   renderAccountSummary();
   renderCosmeticShop();
+  syncLocalRoomCosmetics(account.cosmetics);
   applyLocalCosmeticsToPlayers();
+}
+
+function syncLocalRoomCosmetics(cosmetics) {
+  if (!lobbySession.currentRoom?.slots?.length) {
+    return;
+  }
+
+  lobbySession.currentRoom.slots = getRoomSlots(lobbySession.currentRoom).map((slot) => (
+    slot.type === "player" && slot.playerId === lobbySession.localPlayerId ? { ...slot, cosmetics } : slot
+  ));
+  syncPlayersFromSlots(lobbySession.currentRoom);
+  saveRoomToStorage(lobbySession.currentRoom);
 }
 
 function initRoomSync() {
@@ -4561,8 +4593,14 @@ function renderCosmeticShop() {
       const label = isEquipped ? "장착 중" : isOwned ? "장착" : `${formatValue(item.price)} 구매`;
       return `
         <article class="cosmetic-shop-item ${isEquipped ? "is-equipped" : ""}">
-          <div>
-            <span>${escapeHtml(item.categoryLabel)}</span>
+          <div class="cosmetic-shop-preview ${getCosmeticClass(item.id, "cosmetic-preview--")}">
+            <span>${escapeHtml(item.preview ?? item.categoryLabel)}</span>
+          </div>
+          <div class="cosmetic-shop-copy">
+            <div class="cosmetic-shop-meta">
+              <span>${escapeHtml(item.categoryLabel)}</span>
+              <em>${escapeHtml(item.rarity ?? "Standard")}</em>
+            </div>
             <strong>${escapeHtml(item.label)}</strong>
             <p>${escapeHtml(item.description)}</p>
           </div>

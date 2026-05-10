@@ -479,8 +479,28 @@ function handleAccountAction(client, message) {
   };
   account.updatedAt = Date.now();
   accounts.set(playerId, account);
+  syncAccountCosmeticsToRooms(playerId, account.cosmetics);
   scheduleAccountSave();
   sendJson(client, { type: "accountUpdated", sourceId: "server", account, at: Date.now() });
+  broadcastRooms("accountCosmetics");
+}
+
+function syncAccountCosmeticsToRooms(playerId, cosmetics) {
+  rooms.forEach((room) => {
+    let changed = false;
+    room.slots = normalizeServerSlots(room.slots).map((slot) => {
+      if (slot.type !== "player" || slot.playerId !== playerId) {
+        return slot;
+      }
+      changed = true;
+      return { ...slot, cosmetics };
+    });
+
+    if (changed) {
+      room.updatedAt = Date.now();
+      syncServerPlayersFromSlots(room);
+    }
+  });
 }
 
 function getCosmeticCatalog() {
@@ -933,6 +953,7 @@ function buildPlayersFromSlots(slots = [], hostId = null) {
       ready: slot.playerId === hostId || Boolean(slot.ready),
       weaponId: slot.weaponId,
       armorId: slot.armorId,
+      cosmetics: slot.cosmetics ?? null,
       isMock: slot.isMock,
       connected: slot.connected !== false,
       lastSeen: slot.lastSeen ?? Date.now(),
@@ -961,12 +982,14 @@ function clampInt(value, min, max, fallback) {
 }
 
 function sanitizePlayer(player = {}, playerId, ready = false) {
+  const account = getAccountRecord(playerId, player.nickname ?? player.name ?? "Player");
   return {
     id: playerId,
     playerId,
     nickname: String(player.nickname ?? player.name ?? "Player").trim().slice(0, 18) || "Player",
     weaponId: String(player.weaponId ?? "AR"),
     armorId: String(player.armorId ?? "lightSet"),
+    cosmetics: account.cosmetics,
     ready,
     connected: true,
     lastSeen: Date.now(),
@@ -989,6 +1012,7 @@ function createDefaultServerSlots(hostPlayer) {
     nickname: hostPlayer.nickname,
     weaponId: hostPlayer.weaponId ?? "AR",
     armorId: hostPlayer.armorId ?? "lightSet",
+    cosmetics: hostPlayer.cosmetics ?? null,
     ready: true,
     connected: true,
     lastSeen: Date.now(),

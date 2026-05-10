@@ -2424,7 +2424,7 @@ dd {
 }
 
 .cosmetic-shop-item {
-  align-items: stretch;
+  align-items: center;
 }
 
 .cosmetic-shop-item.is-equipped {
@@ -2432,10 +2432,67 @@ dd {
   background: rgba(185, 232, 109, 0.08);
 }
 
-.cosmetic-shop-item > div {
+.cosmetic-shop-preview {
+  display: grid;
+  flex: 0 0 76px;
+  width: 76px;
+  min-height: 58px;
+  place-items: center;
+  border: 1px solid rgba(230, 217, 189, 0.18);
+  border-radius: 9px;
+  background:
+    radial-gradient(circle at 50% 40%, rgba(185, 232, 109, 0.18), transparent 52%),
+    rgba(8, 12, 12, 0.76);
+  color: #e7f6c4;
+  box-shadow: inset 0 0 28px rgba(185, 232, 109, 0.08);
+}
+
+.cosmetic-shop-preview span {
+  color: inherit;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+}
+
+.cosmetic-preview--nameplate_blacksite {
+  background:
+    radial-gradient(circle at 50% 40%, rgba(122, 136, 255, 0.32), transparent 56%),
+    #07090f;
+  color: #dfe3ff;
+}
+
+.cosmetic-preview--chat_amber,
+.cosmetic-preview--token_ember {
+  background:
+    radial-gradient(circle at 50% 40%, rgba(244, 162, 97, 0.34), transparent 56%),
+    #160d08;
+  color: #ffd6a8;
+}
+
+.cosmetic-preview--token_white_ring {
+  color: #ffffff;
+}
+
+.cosmetic-shop-copy {
   display: grid;
   gap: 3px;
+  flex: 1;
   min-width: 0;
+}
+
+.cosmetic-shop-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cosmetic-shop-meta em {
+  border: 1px solid rgba(185, 232, 109, 0.18);
+  border-radius: 999px;
+  color: #dff4b5;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 950;
 }
 
 .cosmetic-shop-item p {
@@ -2955,9 +3012,11 @@ dd {
 
   .cosmetic-shop-item {
     display: grid;
+    grid-template-columns: 72px minmax(0, 1fr);
   }
 
   .cosmetic-shop-item button {
+    grid-column: 1 / -1;
     width: 100%;
     min-height: 34px;
   }
