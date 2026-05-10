@@ -27,6 +27,13 @@ const accounts = await loadAccounts();
 const ACCOUNT_STORAGE_MODE = accountDb ? "postgres" : ACCOUNT_DB_PERSISTENT ? "persistent-path" : "ephemeral-app-path";
 let accountSaveTimer = 0;
 
+function getProgressionReward({ kills = 0, dead = false, extracted = false, winner = false } = {}) {
+  return {
+    experience: 50 + (Math.max(0, kills) * 100) + (extracted ? 150 : 0) + (winner ? 200 : 0),
+    rankScore: Math.max(0, kills) * 10 - (dead ? 4 : 0)
+  };
+}
+
 const MIME_TYPES = new Map([
   [".html", "text/html; charset=utf-8"],
   [".js", "text/javascript; charset=utf-8"],
@@ -443,6 +450,8 @@ function createDefaultAccount(playerId, nickname = "") {
       wins: 0,
       kills: 0,
       deaths: 0,
+      experience: 0,
+      rankScore: 0,
       bestGameValue: 0,
       extracts: 0
     },
@@ -670,24 +679,30 @@ function handleGameResult(client, message) {
     const result = message.result ?? {};
     const value = Math.max(0, Math.floor(Number(result.value ?? 0)));
     const kills = Math.max(0, Math.floor(Number(result.kills ?? 0)));
+    const dead = Boolean(result.dead);
+    const finalRaidExtracted = Boolean(result.finalRaidExtracted);
+    const winner = Boolean(result.winner);
+    const progression = getProgressionReward({ kills, dead, extracted: finalRaidExtracted, winner });
     account.wallet.lifetimeLootValue += value;
     account.wallet.spendableValue += value;
     account.stats.gamesPlayed += 1;
     account.stats.gamesCompleted += 1;
-    account.stats.wins += result.winner ? 1 : 0;
+    account.stats.wins += winner ? 1 : 0;
     account.stats.kills += kills;
-    account.stats.deaths += result.dead ? 1 : 0;
-    account.stats.extracts += result.finalRaidExtracted ? 1 : 0;
+    account.stats.deaths += dead ? 1 : 0;
+    account.stats.extracts += finalRaidExtracted ? 1 : 0;
+    account.stats.experience = Math.max(0, Number(account.stats.experience ?? 0) + progression.experience);
+    account.stats.rankScore = Math.max(0, Number(account.stats.rankScore ?? 0) + progression.rankScore);
     account.stats.bestGameValue = Math.max(account.stats.bestGameValue ?? 0, value);
     account.lastGame = {
       at: Date.now(),
       roomId: message.roomId ?? null,
       mapId: result.mapId ?? null,
       value,
-      winner: Boolean(result.winner),
+      winner,
       kills,
-      dead: Boolean(result.dead),
-      finalRaidExtracted: Boolean(result.finalRaidExtracted)
+      dead,
+      finalRaidExtracted
     };
     account.appliedGameResults = [...account.appliedGameResults, resultKey].slice(-ACCOUNT_RESULT_HISTORY_LIMIT);
     account.updatedAt = Date.now();

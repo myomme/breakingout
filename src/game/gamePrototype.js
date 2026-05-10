@@ -214,6 +214,16 @@ const PLAYER_COMMAND_STORAGE_PREFIX = "breakingOutPrototypePlayerCommand:";
 const BEGINNER_HELP_STORAGE_KEY = "breakingOutPrototypeBeginnerHelp";
 const DEFAULT_MAP_PATH = "./data/maps/map_Farm.json";
 const DEFAULT_MAP_NAME = "Farm Raid Map";
+const RANK_TIERS = [
+  { label: "루키", badge: "R", min: 0 },
+  { label: "뱅가드", badge: "V", min: 100 },
+  { label: "엘리트", badge: "E", min: 250 },
+  { label: "전문가", badge: "P", min: 500 },
+  { label: "마스터", badge: "M", min: 850 },
+  { label: "에이스", badge: "A", min: 1250 },
+  { label: "히어로", badge: "H", min: 1750 },
+  { label: "레전드", badge: "L", min: 2500 }
+];
 const PRESENCE_HEARTBEAT_MS = 4000;
 const RECONNECT_GRACE_MS = 90000;
 let roomSyncChannel = null;
@@ -1926,8 +1936,9 @@ function renderAccountSummary() {
 function renderLobbyAccountCard(card, account = readAccountRecord()) {
   const lifetimeValue = Number(account.wallet?.lifetimeLootValue ?? 0);
   const spendableValue = Number(account.wallet?.spendableValue ?? 0);
-  const level = Math.max(1, Math.min(99, Math.floor(Math.sqrt(lifetimeValue / 35)) + 1));
-  const tier = getAccountTier(lifetimeValue);
+  const experience = getAccountExperience(account);
+  const levelInfo = getLevelInfo(experience);
+  const tier = getAccountRank(account);
   const completed = account.stats?.gamesCompleted ?? 0;
   const winRate = completed > 0 ? Math.round((account.stats?.wins ?? 0) / completed * 100) : 0;
   const equippedTitle = getCosmeticLabel(account.cosmetics?.equipped?.title) || "오퍼레이터";
@@ -1943,24 +1954,27 @@ function renderLobbyAccountCard(card, account = readAccountRecord()) {
       </span>
     </button>
     <div class="lobby-account-meta">
-      <span>Lv. ${level}</span>
+      <span>Lv. ${levelInfo.level}</span>
       <span>${tier.label}</span>
+      <span>RP ${formatValue(tier.score)}</span>
       <span>승률 ${winRate}%</span>
+    </div>
+    <div class="lobby-account-exp" aria-label="경험치">
+      <span style="width: ${levelInfo.progress}%"></span>
     </div>
     <div class="lobby-account-value">
       <span>보유 가치 <b>${formatValue(spendableValue)}</b></span>
       <span>누적 가치 <b>${formatValue(lifetimeValue)}</b></span>
     </div>
     <div class="lobby-account-actions">
-      <button class="account-shop-open" type="button">상점</button>
       <button class="account-debug-grant" type="button">+500</button>
-      <button class="logout-account-button logout-account-icon" type="button" aria-label="로그아웃">↗</button>
+      <button class="logout-account-button logout-account-icon" type="button">로그아웃</button>
     </div>
   `;
 
   const identityButton = card.querySelector(".lobby-account-identity");
   identityButton?.addEventListener("click", () => {
-    setStartStatus(`전적: ${formatValue(account.stats?.wins)}승 / ${formatValue(completed)}게임 / 최고 가치 ${formatValue(account.stats?.bestGameValue)}`);
+    setStartStatus(`전적: ${formatValue(account.stats?.wins)}승 / ${formatValue(completed)}게임 / Lv.${levelInfo.level} / ${tier.label} ${formatValue(tier.score)}RP`);
   });
 
   const logoutButton = card.querySelector(".logout-account-icon");
@@ -1968,12 +1982,54 @@ function renderLobbyAccountCard(card, account = readAccountRecord()) {
   bindAccountProfileActions();
 }
 
-function getAccountTier(value) {
-  if (value >= 5000) return { label: "Blacksite", badge: "B" };
-  if (value >= 2500) return { label: "Elite", badge: "E" };
-  if (value >= 1000) return { label: "Veteran", badge: "V" };
-  if (value >= 300) return { label: "Ranger", badge: "R" };
-  return { label: "Rookie", badge: "I" };
+function getAccountExperience(account) {
+  const explicit = Number(account.stats?.experience ?? 0);
+  if (explicit > 0) return explicit;
+  return (Number(account.stats?.kills ?? 0) * 100) +
+    (Number(account.stats?.extracts ?? 0) * 150) +
+    (Number(account.stats?.wins ?? 0) * 200) +
+    (Number(account.stats?.gamesCompleted ?? 0) * 50);
+}
+
+function getLevelInfo(experience) {
+  let remaining = Math.max(0, Math.floor(Number(experience ?? 0)));
+  let level = 1;
+  let next = getLevelRequirement(level);
+
+  while (level < 99 && remaining >= next) {
+    remaining -= next;
+    level += 1;
+    next = getLevelRequirement(level);
+  }
+
+  return {
+    level,
+    current: remaining,
+    next,
+    progress: next > 0 ? Math.max(3, Math.min(100, Math.round(remaining / next * 100))) : 100
+  };
+}
+
+function getLevelRequirement(level) {
+  return 300 + ((Math.max(1, level) - 1) * 120);
+}
+
+function getAccountRank(account) {
+  const explicit = Number(account.stats?.rankScore ?? NaN);
+  const fallback = (Number(account.stats?.kills ?? 0) * 10) - (Number(account.stats?.deaths ?? 0) * 4);
+  const score = Math.max(0, Math.floor(Math.max(Number.isFinite(explicit) ? explicit : 0, fallback)));
+  let current = RANK_TIERS[0];
+  RANK_TIERS.forEach((tier) => {
+    if (score >= tier.min) current = tier;
+  });
+  return { ...current, score };
+}
+
+function getProgressionReward({ kills = 0, dead = false, extracted = false, winner = false } = {}) {
+  return {
+    experience: 50 + (Math.max(0, kills) * 100) + (extracted ? 150 : 0) + (winner ? 200 : 0),
+    rankScore: Math.max(0, kills) * 10 - (dead ? 4 : 0)
+  };
 }
 
 function formatValue(value) {
@@ -2582,6 +2638,8 @@ function createDefaultAccountRecord() {
       wins: 0,
       kills: 0,
       deaths: 0,
+      experience: 0,
+      rankScore: 0,
       bestGameValue: 0,
       extracts: 0
     },
@@ -7192,6 +7250,13 @@ function applyGameSummaryToAccount(summary) {
   const confirmedValue = Math.max(0, Number(standing.score ?? 0));
   const localKills = (state.killLog ?? []).filter((entry) => entry.killerId === localPlayer.id || entry.killerName === localPlayer.name).length;
   const winner = summary.winners.some((entry) => entry.id === localPlayer.id || entry.name === localPlayer.name);
+  const finalRaidExtracted = Boolean(localPlayer.extractedThisRaid);
+  const progression = getProgressionReward({
+    kills: localKills,
+    dead: Boolean(localPlayer.dead),
+    extracted: finalRaidExtracted,
+    winner
+  });
 
   account.wallet.lifetimeLootValue += confirmedValue;
   account.wallet.spendableValue += confirmedValue;
@@ -7200,6 +7265,9 @@ function applyGameSummaryToAccount(summary) {
   account.stats.wins += winner ? 1 : 0;
   account.stats.kills += localKills;
   account.stats.deaths += localPlayer.dead ? 1 : 0;
+  account.stats.extracts += finalRaidExtracted ? 1 : 0;
+  account.stats.experience = Math.max(0, Number(account.stats.experience ?? 0) + progression.experience);
+  account.stats.rankScore = Math.max(0, Number(account.stats.rankScore ?? 0) + progression.rankScore);
   account.stats.bestGameValue = Math.max(account.stats.bestGameValue ?? 0, confirmedValue);
   account.lastGame = {
     at: Date.now(),
@@ -7209,7 +7277,7 @@ function applyGameSummaryToAccount(summary) {
     winner,
     kills: localKills,
     dead: Boolean(localPlayer.dead),
-    finalRaidExtracted: Boolean(localPlayer.extractedThisRaid)
+    finalRaidExtracted
   };
   account.appliedGameResults = [...(account.appliedGameResults ?? []), resultKey].slice(-20);
   writeAccountRecord(account);
@@ -7219,7 +7287,7 @@ function applyGameSummaryToAccount(summary) {
     winner,
     kills: localKills,
     dead: Boolean(localPlayer.dead),
-    finalRaidExtracted: Boolean(localPlayer.extractedThisRaid),
+    finalRaidExtracted,
     mapId: state.gameMap?.mapId ?? null
   });
   renderAccountSummary();

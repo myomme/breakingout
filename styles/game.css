@@ -1428,6 +1428,23 @@ button.room-slot-ready {
   padding: 3px 6px;
 }
 
+.lobby-account-exp {
+  grid-column: 1;
+  height: 5px;
+  overflow: hidden;
+  border: 1px solid rgba(236, 224, 196, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.lobby-account-exp span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #9de95e, #e05f36);
+  box-shadow: 0 0 14px rgba(185, 232, 109, 0.32);
+}
+
 .lobby-account-value {
   display: grid;
   grid-column: 1;
@@ -1451,11 +1468,11 @@ button.room-slot-ready {
 
 .lobby-account-actions {
   grid-column: 2;
-  grid-row: 1 / span 3;
+  grid-row: 1 / span 4;
   display: grid;
   gap: 6px;
   align-content: center;
-  min-width: 70px;
+  min-width: 82px;
 }
 
 .lobby-account-actions button {
@@ -1467,7 +1484,8 @@ button.room-slot-ready {
 }
 
 .logout-account-icon {
-  font-size: 15px;
+  color: #ffd6d0;
+  font-size: 11px;
   line-height: 1;
 }
 
@@ -3672,7 +3690,7 @@ dd {
   .lobby-account-actions {
     grid-column: 1;
     grid-row: auto;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .lobby-account-value {
