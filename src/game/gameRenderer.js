@@ -643,6 +643,14 @@ export class GameRenderer {
       this.ctx.lineWidth = active ? 3 : 2;
       this.ctx.stroke();
 
+      if (tokenSkin === "token_ember") {
+        this.ctx.beginPath();
+        this.ctx.arc(center.x, center.y, active ? 12 : 10, 0, Math.PI * 2);
+        this.ctx.strokeStyle = "rgba(255, 153, 74, 0.48)";
+        this.ctx.lineWidth = 2;
+        this.ctx.stroke();
+      }
+
       if (attackable || hitFlash) {
         this.ctx.beginPath();
         this.ctx.arc(center.x, center.y, hitFlash ? 18 : 15, 0, Math.PI * 2);
@@ -1150,7 +1158,7 @@ function getPlayerTokenFill({ active, attackable, hitFlash, tokenSkin }) {
   }
 
   if (tokenSkin === "token_ember") {
-    return active ? "#5c241f" : attackable ? "#b5302d" : "#8b3b2b";
+    return active ? "#8a3f22" : attackable ? "#b5302d" : "#a85d32";
   }
 
   if (tokenSkin === "token_white_ring") {
@@ -1162,7 +1170,7 @@ function getPlayerTokenFill({ active, attackable, hitFlash, tokenSkin }) {
 
 function getPlayerTokenStroke({ active, tokenSkin }) {
   if (tokenSkin === "token_ember") {
-    return active ? "#ffd5b1" : "#f4a261";
+    return active ? "#ffe0b2" : "#ffb46f";
   }
 
   if (tokenSkin === "token_white_ring") {

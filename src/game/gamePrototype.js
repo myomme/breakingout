@@ -2116,7 +2116,7 @@ function applyLocalCosmeticsToPlayers() {
 
   const account = readAccountRecord();
   state.players.forEach((player) => {
-    if (player.controllerId === lobbySession.localPlayerId) {
+    if (player.controllerId === lobbySession.localPlayerId || player.id === lobbySession.localPlayerId) {
       player.cosmetics = account.cosmetics;
     }
   });

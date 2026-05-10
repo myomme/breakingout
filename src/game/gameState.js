@@ -204,6 +204,7 @@ export class RaidGameState {
       stamina: staminaMax,
       armorId,
       armor: armorState,
+      cosmetics: loadout.cosmetics ?? null,
       movementSpentThisPhase: 0,
       bodyHp: { ...this.playerTemplate.bodyHp },
       bagSlots: 20,
