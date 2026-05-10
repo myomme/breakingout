@@ -14,11 +14,17 @@ const snapshots = new Map();
 const chatMessagesByRoom = new Map();
 const ROOM_TTL_MS = 12 * 60 * 60 * 1000;
 const MAX_CHAT_MESSAGES = 80;
-const ACCOUNT_DB_PATH = path.join(__dirname, "data", "serverAccounts.json");
+const ACCOUNT_DB_PATH = process.env.ACCOUNT_DB_PATH
+  ? path.resolve(process.env.ACCOUNT_DB_PATH)
+  : path.join(__dirname, "data", "serverAccounts.json");
+const ACCOUNT_DB_PERSISTENT = Boolean(process.env.ACCOUNT_DB_PATH);
+const DATABASE_URL = process.env.DATABASE_URL ?? "";
 const ACCOUNT_RESULT_HISTORY_LIMIT = 80;
 const ACCOUNT_SESSION_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 const ADMIN_KEY = process.env.ADMIN_KEY ?? "";
+const accountDb = await createAccountDb();
 const accounts = await loadAccounts();
+const ACCOUNT_STORAGE_MODE = accountDb ? "postgres" : ACCOUNT_DB_PERSISTENT ? "persistent-path" : "ephemeral-app-path";
 let accountSaveTimer = 0;
 
 const MIME_TYPES = new Map([
@@ -46,6 +52,7 @@ const server = http.createServer(async (request, response) => {
         rooms: rooms.length,
         clients: clients.size,
         accounts: accounts.size,
+        accountStorage: ACCOUNT_STORAGE_MODE,
         uptime: Math.floor(process.uptime())
       }));
       return;
@@ -340,7 +347,44 @@ function handleMessage(client, message) {
   }
 }
 
+async function createAccountDb() {
+  if (!DATABASE_URL) {
+    return null;
+  }
+
+  try {
+    const { Pool } = await import("pg");
+    const pool = new Pool({
+      connectionString: DATABASE_URL,
+      ssl: shouldUsePostgresSsl() ? { rejectUnauthorized: false } : undefined
+    });
+    await pool.query(`
+      create table if not exists accounts (
+        account_id text primary key,
+        data jsonb not null,
+        updated_at bigint not null
+      )
+    `);
+    return pool;
+  } catch (error) {
+    console.warn(`PostgreSQL account storage unavailable: ${error.message}`);
+    return null;
+  }
+}
+
+function shouldUsePostgresSsl() {
+  return /sslmode=require/i.test(DATABASE_URL) ||
+    /\.neon\.tech/i.test(DATABASE_URL) ||
+    /supabase\./i.test(DATABASE_URL) ||
+    process.env.PGSSL === "true";
+}
+
 async function loadAccounts() {
+  if (accountDb) {
+    const result = await accountDb.query("select account_id, data from accounts");
+    return new Map(result.rows.map((row) => [row.account_id, row.data]));
+  }
+
   try {
     const raw = await fs.readFile(ACCOUNT_DB_PATH, "utf8");
     const parsed = JSON.parse(raw);
@@ -359,6 +403,20 @@ function scheduleAccountSave() {
 }
 
 async function saveAccounts() {
+  if (accountDb) {
+    const entries = [...accounts.entries()];
+    await Promise.all(entries.map(([accountId, account]) => accountDb.query(
+      `
+        insert into accounts (account_id, data, updated_at)
+        values ($1, $2::jsonb, $3)
+        on conflict (account_id)
+        do update set data = excluded.data, updated_at = excluded.updated_at
+      `,
+      [accountId, JSON.stringify(account), Date.now()]
+    )));
+    return;
+  }
+
   await fs.mkdir(path.dirname(ACCOUNT_DB_PATH), { recursive: true });
   await fs.writeFile(ACCOUNT_DB_PATH, JSON.stringify({
     version: 1,
@@ -897,9 +955,12 @@ function shutdown() {
   for (const client of clients) {
     client.socket.end();
   }
-  void saveAccounts().catch(() => {}).finally(() => server.close(() => {
-    process.exit(0);
-  }));
+  void saveAccounts()
+    .catch(() => {})
+    .finally(() => accountDb?.end?.())
+    .finally(() => server.close(() => {
+      process.exit(0);
+    }));
 }
 
 function broadcastRooms(reason = "roomAction") {

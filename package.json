@@ -11,5 +11,8 @@
     "dev": "node server.mjs",
     "check": "node --check server.mjs && node --check src/game/gamePrototype.js",
     "static": "python -m http.server 5173"
+  },
+  "dependencies": {
+    "pg": "^8.13.1"
   }
 }
