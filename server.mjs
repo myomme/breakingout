@@ -16,6 +16,7 @@ const ROOM_TTL_MS = 12 * 60 * 60 * 1000;
 const MAX_CHAT_MESSAGES = 80;
 const ACCOUNT_DB_PATH = path.join(__dirname, "data", "serverAccounts.json");
 const ACCOUNT_RESULT_HISTORY_LIMIT = 80;
+const ACCOUNT_SESSION_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 const accounts = await loadAccounts();
 let accountSaveTimer = 0;
 
@@ -394,6 +395,10 @@ function handleAccountAuth(client, message) {
     resumeAccount(client, message);
     return;
   }
+  if (action === "logout") {
+    logoutAccount(client, message);
+    return;
+  }
   sendJson(client, { type: "accountAuthResult", sourceId: "server", ok: false, message: "Unknown account auth action", at: Date.now() });
 }
 
@@ -449,12 +454,19 @@ function resumeAccount(client, message) {
   const accountId = String(message.accountId ?? "");
   const account = normalizeAccount(accounts.get(accountId), accountId);
   const tokenHash = hashSessionToken(message.sessionToken);
-  if (!account?.accountId || !tokenHash || !account.sessions.some((session) => session.tokenHash === tokenHash)) {
+  const now = Date.now();
+  account.sessions = account.sessions.filter((session) => now - (session.lastSeen ?? session.createdAt ?? 0) <= ACCOUNT_SESSION_TTL_MS);
+  const validSession = account.sessions.find((session) => session.tokenHash === tokenHash);
+  if (!account?.accountId || !tokenHash || !validSession) {
+    if (account?.accountId) {
+      accounts.set(accountId, account);
+      scheduleAccountSave();
+    }
     sendAccountAuthFailure(client, "저장된 로그인 세션이 만료되었습니다.");
     return;
   }
   account.sessions = account.sessions.map((session) => (
-    session.tokenHash === tokenHash ? { ...session, lastSeen: Date.now() } : session
+    session.tokenHash === tokenHash ? { ...session, lastSeen: now } : session
   ));
   accounts.set(accountId, account);
   scheduleAccountSave();
@@ -466,6 +478,19 @@ function resumeAccount(client, message) {
     sessionToken: message.sessionToken,
     at: Date.now()
   });
+}
+
+function logoutAccount(client, message) {
+  const accountId = String(message.accountId ?? message.sourceId ?? "");
+  const account = normalizeAccount(accounts.get(accountId), accountId);
+  const tokenHash = hashSessionToken(message.sessionToken);
+  if (account?.accountId && tokenHash) {
+    account.sessions = account.sessions.filter((session) => session.tokenHash !== tokenHash);
+    account.updatedAt = Date.now();
+    accounts.set(accountId, account);
+    scheduleAccountSave();
+  }
+  sendJson(client, { type: "accountAuthResult", sourceId: "server", ok: false, message: "로그아웃되었습니다.", at: Date.now() });
 }
 
 function completeAccountAuth(client, account) {

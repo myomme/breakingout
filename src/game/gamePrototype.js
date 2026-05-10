@@ -163,6 +163,12 @@ let eventDebugRun = null;
 let cosmeticShopList = null;
 let cosmeticShopOverlay = null;
 let cosmeticShopClose = null;
+let accountRegisterOverlay = null;
+let registerAccountIdInput = null;
+let registerPasswordInput = null;
+let registerNicknameInput = null;
+let accountRegisterSubmit = null;
+let accountRegisterClose = null;
 let beginnerHelpPanel = null;
 let beginnerHelpTitle = null;
 let beginnerHelpBody = null;
@@ -554,6 +560,7 @@ function initStartOverlay() {
   initServerSync();
   startPresenceHeartbeat();
   ensureLobbyShopUi();
+  ensureAccountRegisterUi();
   bindLobbyEvents();
   startGameButton.addEventListener("click", handleStartGame);
   bootstrap().catch((error) => {
@@ -598,6 +605,7 @@ function normalizeLobbyCopy() {
   const nicknameLabel = nicknameInput?.closest(".start-option-field")?.querySelector("span");
   if (nicknameLabel) nicknameLabel.textContent = "닉네임";
   if (nicknameInput) nicknameInput.placeholder = "닉네임 입력";
+  nicknameInput?.closest(".start-option-field")?.setAttribute("hidden", "");
 
   const roomCodeLabel = document.querySelector(".lobby-room-code-field span");
   if (roomCodeLabel) roomCodeLabel.textContent = "방 번호";
@@ -992,8 +1000,8 @@ function syncPlayersFromSlots(room) {
 function bindLobbyEvents() {
   ensureSessionChatUi();
   enterLobbyButton?.addEventListener("click", () => authenticateAccount("login"));
-  registerAccountButton?.addEventListener("click", () => authenticateAccount("register"));
-  [accountIdInput, accountPasswordInput, nicknameInput].forEach((input) => input?.addEventListener("keydown", (event) => {
+  registerAccountButton?.addEventListener("click", openAccountRegisterModal);
+  [accountIdInput, accountPasswordInput].forEach((input) => input?.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
       authenticateAccount("login");
     }
@@ -1089,6 +1097,15 @@ function rememberAccountSession(account, sessionToken) {
   });
 }
 
+function clearAccountSession() {
+  try {
+    localStorage.removeItem(ACCOUNT_SESSION_STORAGE_KEY);
+    sessionStorage.removeItem(SESSION_PLAYER_ID_KEY);
+  } catch {
+    // Ignore storage cleanup failures.
+  }
+}
+
 function requestAccountResume() {
   const saved = readStoredAccountSession();
   if (!saved?.accountId || !saved?.sessionToken) {
@@ -1165,25 +1182,26 @@ function shouldRemoveStoredRoom(room, now = Date.now()) {
 }
 
 function authenticateAccount(action = "login") {
-  const username = normalizeAccountUsername(accountIdInput?.value);
-  const password = String(accountPasswordInput?.value ?? "");
-  const nickname = normalizeNickname(nicknameInput?.value);
+  const isRegister = action === "register";
+  const username = normalizeAccountUsername(isRegister ? registerAccountIdInput?.value : accountIdInput?.value);
+  const password = String((isRegister ? registerPasswordInput : accountPasswordInput)?.value ?? "");
+  const nickname = normalizeNickname(isRegister ? registerNicknameInput?.value : nicknameInput?.value);
 
   if (!username) {
     setStartStatus("계정 ID는 영문/숫자/밑줄 3~20자로 입력하세요.");
-    accountIdInput?.focus();
+    (isRegister ? registerAccountIdInput : accountIdInput)?.focus();
     return;
   }
 
   if (password.length < 4) {
     setStartStatus("비밀번호는 최소 4자 이상 입력하세요.");
-    accountPasswordInput?.focus();
+    (isRegister ? registerPasswordInput : accountPasswordInput)?.focus();
     return;
   }
 
   if (action === "register" && !nickname) {
     setStartStatus("계정 생성 시 사용할 닉네임을 입력하세요.");
-    nicknameInput?.focus();
+    registerNicknameInput?.focus();
     return;
   }
 
@@ -1235,11 +1253,35 @@ function completeAccountLogin({ account, sessionToken }) {
   if (accountPasswordInput) {
     accountPasswordInput.value = "";
   }
+  closeAccountRegisterModal();
   writeAccountRecord(account);
   showLobbyStep("lobby");
   renderLobby();
   requestServerRooms();
   setStartStatus(`${lobbySession.nickname} 계정으로 접속했습니다.`);
+}
+
+function logoutAccount() {
+  if (lobbySession.sessionToken) {
+    sendServerMessage({
+      type: "accountAuth",
+      action: "logout",
+      accountId: lobbySession.accountId,
+      sessionToken: lobbySession.sessionToken,
+      sourceId: lobbySession.localPlayerId,
+      at: Date.now()
+    });
+  }
+  clearAccountSession();
+  forgetCurrentRoom();
+  lobbySession = createEmptyLobbySession();
+  lobbySession.localPlayerId = getSessionPlayerId();
+  if (accountIdInput) accountIdInput.value = "";
+  if (accountPasswordInput) accountPasswordInput.value = "";
+  if (nicknameInput) nicknameInput.value = "";
+  showLobbyStep("login");
+  renderLobby();
+  setStartStatus("로그아웃했습니다.");
 }
 
 async function createRoom() {
@@ -1655,7 +1697,13 @@ function renderAccountSummary() {
     <span>누적 가치 <b>${formatValue(account.wallet.lifetimeLootValue)}</b></span>
     <span>보유 가치 <b>${formatValue(account.wallet.spendableValue)}</b></span>
     <span>전적 <b>${account.stats.wins}/${account.stats.gamesCompleted}</b></span>
+    <button id="logoutAccountButton" class="logout-account-button" type="button">로그아웃</button>
   `;
+  const logoutButton = summary.querySelector("#logoutAccountButton");
+  if (logoutButton && logoutButton.dataset.bound !== "true") {
+    logoutButton.addEventListener("click", logoutAccount);
+    logoutButton.dataset.bound = "true";
+  }
 
   renderAccountProfileCard(account);
 }
@@ -2335,6 +2383,68 @@ function openCosmeticShopModal() {
 function closeCosmeticShopModal() {
   if (cosmeticShopOverlay) {
     cosmeticShopOverlay.hidden = true;
+  }
+}
+
+function ensureAccountRegisterUi() {
+  if (accountRegisterOverlay) {
+    return;
+  }
+
+  accountRegisterOverlay = document.createElement("div");
+  accountRegisterOverlay.id = "accountRegisterOverlay";
+  accountRegisterOverlay.className = "account-register-overlay";
+  accountRegisterOverlay.hidden = true;
+  accountRegisterOverlay.innerHTML = `
+    <div class="account-register-backdrop"></div>
+    <section class="account-register-panel" role="dialog" aria-modal="true" aria-labelledby="accountRegisterTitle">
+      <header class="account-register-header">
+        <div>
+          <span>Breaking Out Account</span>
+          <h2 id="accountRegisterTitle">계정 생성</h2>
+        </div>
+        <button id="accountRegisterClose" class="icon-button" type="button" aria-label="계정 생성 닫기">-</button>
+      </header>
+      <label class="start-option-field">
+        <span>계정 ID</span>
+        <input id="registerAccountIdInput" type="text" maxlength="20" placeholder="영문/숫자 3~20자" autocomplete="username" value="">
+      </label>
+      <label class="start-option-field">
+        <span>비밀번호</span>
+        <input id="registerPasswordInput" type="password" maxlength="64" placeholder="비밀번호" autocomplete="new-password" value="">
+      </label>
+      <label class="start-option-field">
+        <span>닉네임</span>
+        <input id="registerNicknameInput" type="text" maxlength="18" placeholder="닉네임 입력" autocomplete="off" value="">
+      </label>
+      <button id="accountRegisterSubmit" type="button">계정 생성</button>
+    </section>
+  `;
+  document.body.append(accountRegisterOverlay);
+  registerAccountIdInput = accountRegisterOverlay.querySelector("#registerAccountIdInput");
+  registerPasswordInput = accountRegisterOverlay.querySelector("#registerPasswordInput");
+  registerNicknameInput = accountRegisterOverlay.querySelector("#registerNicknameInput");
+  accountRegisterSubmit = accountRegisterOverlay.querySelector("#accountRegisterSubmit");
+  accountRegisterClose = accountRegisterOverlay.querySelector("#accountRegisterClose");
+  accountRegisterSubmit?.addEventListener("click", () => authenticateAccount("register"));
+  accountRegisterClose?.addEventListener("click", closeAccountRegisterModal);
+  accountRegisterOverlay.querySelector(".account-register-backdrop")?.addEventListener("click", closeAccountRegisterModal);
+  [registerAccountIdInput, registerPasswordInput, registerNicknameInput].forEach((input) => input?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      authenticateAccount("register");
+    }
+  }));
+}
+
+function openAccountRegisterModal() {
+  ensureAccountRegisterUi();
+  accountRegisterOverlay.hidden = false;
+  registerAccountIdInput?.focus();
+}
+
+function closeAccountRegisterModal() {
+  if (accountRegisterOverlay) {
+    accountRegisterOverlay.hidden = true;
   }
 }
 
