@@ -1472,27 +1472,29 @@ button.room-slot-ready {
 }
 
 .lobby-event-panel.is-collapsed {
-  transform: translateX(calc(100% - 40px));
+  transform: translateX(calc(100% + max(28px, env(safe-area-inset-right))));
 }
 
 .lobby-event-toggle {
   position: absolute;
   top: 12px;
-  left: -38px;
+  left: -34px;
   z-index: 2;
   display: grid;
-  width: 38px;
-  height: 58px;
+  width: 34px;
+  height: 52px;
   min-height: 0 !important;
   place-items: center;
   border: 1px solid rgba(236, 224, 196, 0.16) !important;
   border-right: 0 !important;
-  border-radius: 14px 0 0 14px !important;
+  border-radius: 12px 0 0 12px !important;
   background: rgba(8, 12, 12, 0.82) !important;
   color: #efffcf !important;
-  font-size: 22px !important;
+  font-size: 18px !important;
   font-weight: 1000 !important;
   padding: 0 !important;
+  line-height: 1 !important;
+  text-align: center !important;
   box-shadow: -10px 10px 30px rgba(0, 0, 0, 0.22);
 }
 
@@ -4985,6 +4987,10 @@ dd {
     top: 38dvh;
     right: max(8px, env(safe-area-inset-right));
     width: min(260px, calc(100vw - 52px));
+  }
+
+  .lobby-event-panel.is-collapsed {
+    transform: translateX(calc(100% + max(8px, env(safe-area-inset-right))));
   }
 
   .lobby-info-overlay {
