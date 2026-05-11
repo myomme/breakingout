@@ -175,6 +175,12 @@ let purchaseConfirmBody = null;
 let purchaseConfirmCancel = null;
 let purchaseConfirmSubmit = null;
 let pendingPurchaseItemId = null;
+let cosmeticPreviewOverlay = null;
+let cosmeticPreviewBody = null;
+let cosmeticPreviewClose = null;
+let publicProfileOverlay = null;
+let publicProfileBody = null;
+let publicProfileClose = null;
 let lobbyInfoOverlay = null;
 let lobbyInfoTitle = null;
 let lobbyInfoBody = null;
@@ -710,6 +716,8 @@ function initStartOverlay() {
   ensureAccountRegisterUi();
   ensureAccountProfileUi();
   ensurePurchaseConfirmUi();
+  ensureCosmeticPreviewUi();
+  ensurePublicProfileUi();
   ensureLobbyInfoUi();
   ensureLobbyShellUi();
   ensureLobbyShopPanelUi();
@@ -878,6 +886,74 @@ function ensurePurchaseConfirmUi() {
     }
     closePurchaseConfirm();
   });
+}
+
+function ensureCosmeticPreviewUi() {
+  if (cosmeticPreviewOverlay || document.querySelector("#cosmeticPreviewOverlay")) {
+    cosmeticPreviewOverlay = document.querySelector("#cosmeticPreviewOverlay");
+    cosmeticPreviewBody = document.querySelector("#cosmeticPreviewBody");
+    cosmeticPreviewClose = document.querySelector("#cosmeticPreviewClose");
+    return;
+  }
+
+  cosmeticPreviewOverlay = document.createElement("div");
+  cosmeticPreviewOverlay.id = "cosmeticPreviewOverlay";
+  cosmeticPreviewOverlay.className = "cosmetic-preview-overlay";
+  cosmeticPreviewOverlay.hidden = true;
+  cosmeticPreviewOverlay.innerHTML = `
+    <div class="cosmetic-preview-backdrop" data-cosmetic-preview-close="true"></div>
+    <section class="cosmetic-preview-panel" role="dialog" aria-modal="true" aria-label="아이템 미리보기">
+      <header class="cosmetic-preview-header">
+        <span>Item Preview</span>
+        <strong>미리보기</strong>
+        <button id="cosmeticPreviewClose" type="button" aria-label="미리보기 닫기">-</button>
+      </header>
+      <div id="cosmeticPreviewBody" class="cosmetic-preview-body"></div>
+    </section>
+  `;
+  document.body.append(cosmeticPreviewOverlay);
+  cosmeticPreviewBody = cosmeticPreviewOverlay.querySelector("#cosmeticPreviewBody");
+  cosmeticPreviewClose = cosmeticPreviewOverlay.querySelector("#cosmeticPreviewClose");
+  cosmeticPreviewOverlay.addEventListener("click", (event) => {
+    if (event.target.closest("[data-cosmetic-preview-close]")) {
+      closeCosmeticPreview();
+    }
+  });
+  cosmeticPreviewClose?.addEventListener("click", closeCosmeticPreview);
+}
+
+function ensurePublicProfileUi() {
+  if (publicProfileOverlay || document.querySelector("#publicProfileOverlay")) {
+    publicProfileOverlay = document.querySelector("#publicProfileOverlay");
+    publicProfileBody = document.querySelector("#publicProfileBody");
+    publicProfileClose = document.querySelector("#publicProfileClose");
+    return;
+  }
+
+  publicProfileOverlay = document.createElement("div");
+  publicProfileOverlay.id = "publicProfileOverlay";
+  publicProfileOverlay.className = "public-profile-overlay";
+  publicProfileOverlay.hidden = true;
+  publicProfileOverlay.innerHTML = `
+    <div class="public-profile-backdrop" data-public-profile-close="true"></div>
+    <section class="public-profile-panel" role="dialog" aria-modal="true" aria-label="공개 프로필">
+      <header class="public-profile-header">
+        <span>Operator Card</span>
+        <strong>공개 프로필</strong>
+        <button id="publicProfileClose" type="button" aria-label="프로필 닫기">-</button>
+      </header>
+      <div id="publicProfileBody" class="public-profile-body"></div>
+    </section>
+  `;
+  document.body.append(publicProfileOverlay);
+  publicProfileBody = publicProfileOverlay.querySelector("#publicProfileBody");
+  publicProfileClose = publicProfileOverlay.querySelector("#publicProfileClose");
+  publicProfileOverlay.addEventListener("click", (event) => {
+    if (event.target.closest("[data-public-profile-close]")) {
+      closePublicProfile();
+    }
+  });
+  publicProfileClose?.addEventListener("click", closePublicProfile);
 }
 
 function ensureLobbyShellUi() {
@@ -1213,7 +1289,7 @@ async function fetchLeaderboardData() {
   } catch {
     const account = readAccountRecord();
     const fallbackEntry = createLocalLeaderboardEntry(account);
-    return {
+    leaderboardCache = {
       ok: false,
       count: fallbackEntry.gamesCompleted > 0 ? 1 : 0,
       rankings: {
@@ -1223,6 +1299,8 @@ async function fetchLeaderboardData() {
         kd: fallbackEntry.gamesCompleted > 0 ? [fallbackEntry] : []
       }
     };
+    leaderboardCacheAt = now;
+    return leaderboardCache;
   }
 }
 
@@ -1258,12 +1336,12 @@ function renderLeaderboardRows(rows) {
   }
 
   return rows.map((entry) => `
-    <div class="leaderboard-row ${entry.accountId === lobbySession.accountId ? "is-me" : ""}">
+    <button class="leaderboard-row ${entry.accountId === lobbySession.accountId ? "is-me" : ""}" type="button" data-public-profile-id="${escapeHtml(entry.accountId ?? "")}">
       <span>${entry.rank}</span>
       <strong>${escapeHtml(entry.nickname ?? "Operator")}</strong>
       <em>${formatLeaderboardMetric(entry, activeLeaderboardCategory)}</em>
       <small>${formatValue(entry.kills)}K / ${formatValue(entry.deaths)}D / ${formatValue(entry.extracts)}E</small>
-    </div>
+    </button>
   `).join("");
 }
 
@@ -1310,6 +1388,11 @@ function bindLobbyInfoPanelActions(type) {
       button.addEventListener("click", () => {
         activeLeaderboardCategory = button.dataset.leaderboardCategory ?? "rp";
         openLobbyInfoPanel("ranking");
+      });
+    });
+    lobbyInfoBody.querySelectorAll("[data-public-profile-id]").forEach((button) => {
+      button.addEventListener("click", () => {
+        openPublicProfile(button.dataset.publicProfileId);
       });
     });
   }
@@ -6168,6 +6251,11 @@ function renderCosmeticItem(item, account, context) {
         data-cosmetic-id="${item.id}"
         ${disabled ? "disabled" : ""}
       >${label}</button>
+      <button
+        class="cosmetic-preview-button"
+        type="button"
+        data-cosmetic-preview="${item.id}"
+      >보기</button>
     </article>
   `;
 }
@@ -6178,8 +6266,12 @@ function bindCosmeticList(list, markup) {
     return;
   }
   list.addEventListener("click", (event) => {
-    const button = event.target.closest("button[data-cosmetic-action]");
+    const button = event.target.closest("button[data-cosmetic-action], button[data-cosmetic-preview]");
     if (!button) {
+      return;
+    }
+    if (button.dataset.cosmeticPreview) {
+      openCosmeticPreview(button.dataset.cosmeticPreview);
       return;
     }
     if (button.dataset.cosmeticAction === "purchaseCosmetic") {
@@ -6249,6 +6341,144 @@ function closePurchaseConfirm() {
   if (purchaseConfirmOverlay) {
     purchaseConfirmOverlay.hidden = true;
   }
+}
+
+function openCosmeticPreview(itemId) {
+  ensureCosmeticPreviewUi();
+  const item = COSMETIC_CATALOG.find((entry) => entry.id === itemId);
+  if (!item || !cosmeticPreviewOverlay || !cosmeticPreviewBody) {
+    return;
+  }
+
+  const account = readAccountRecord();
+  const owned = new Set(account.cosmetics?.owned ?? ["default"]);
+  const equipped = account.cosmetics?.equipped ?? {};
+  const isOwned = owned.has(item.id);
+  const isEquipped = equipped[item.category] === item.id;
+  const balance = account.wallet?.spendableValue ?? 0;
+  cosmeticPreviewBody.innerHTML = `
+    <div class="cosmetic-preview-showcase">
+      ${renderCosmeticPreviewScene(item, account)}
+    </div>
+    <div class="cosmetic-preview-details">
+      <span>${escapeHtml(item.categoryLabel)} / ${escapeHtml(item.rarity ?? "Standard")}</span>
+      <strong>${escapeHtml(item.label)}</strong>
+      <p>${escapeHtml(item.description)}</p>
+      <dl>
+        <div><dt>상태</dt><dd>${isEquipped ? "장착 중" : isOwned ? "보유" : "미보유"}</dd></div>
+        <div><dt>가격</dt><dd>${formatValue(item.price)}</dd></div>
+        <div><dt>보유 가치</dt><dd>${formatValue(balance)}</dd></div>
+      </dl>
+    </div>
+  `;
+  cosmeticPreviewOverlay.hidden = false;
+}
+
+function closeCosmeticPreview() {
+  if (cosmeticPreviewOverlay) {
+    cosmeticPreviewOverlay.hidden = true;
+  }
+}
+
+function renderCosmeticPreviewScene(item, account) {
+  const nickname = account.nickname || lobbySession.nickname || "Operator";
+  const title = getCosmeticLabel(account.cosmetics?.equipped?.title) || "오퍼레이터";
+
+  if (item.category === "nameplate") {
+    return `
+      <article class="preview-nameplate lobby-account-card ${getCosmeticClass(item.id, "lobby-account-card--")}">
+        <button class="lobby-account-identity" type="button" tabindex="-1">
+          <span class="lobby-account-tier">R</span>
+          <span>
+            <strong>${escapeHtml(nickname)}</strong>
+            <small>${escapeHtml(title)}</small>
+          </span>
+        </button>
+        <div class="lobby-account-meta"><span>Lv. 12</span><span>뱅가드</span><span>RP 320</span></div>
+      </article>
+    `;
+  }
+
+  if (item.category === "chatBubble") {
+    return `
+      <article class="session-chat-message ${getCosmeticClass(item.id, "chat-bubble--")} preview-chat-bubble">
+        <div><strong>${escapeHtml(nickname)}</strong><small>Preview</small></div>
+        <p>작전 메시지가 이렇게 표시됩니다.</p>
+      </article>
+    `;
+  }
+
+  if (item.category === "tokenSkin") {
+    return `
+      <div class="preview-token-field">
+        <span class="preview-token ${getCosmeticClass(item.id, "preview-token--")}">1</span>
+      </div>
+    `;
+  }
+
+  return `
+    <article class="preview-title-card">
+      <span>${escapeHtml(item.preview ?? "TITLE")}</span>
+      <strong>${escapeHtml(nickname)}</strong>
+      <p>${escapeHtml(item.label)}</p>
+    </article>
+  `;
+}
+
+function openPublicProfile(accountId) {
+  ensurePublicProfileUi();
+  const entry = findLeaderboardEntry(accountId);
+  if (!entry || !publicProfileOverlay || !publicProfileBody) {
+    return;
+  }
+
+  const survival = Math.round(Number(entry.survivalRate ?? 0) * 100);
+  const kd = Number(entry.kd ?? 0).toFixed(2);
+  const rank = getRankFromScore(entry.rankScore);
+  publicProfileBody.innerHTML = `
+    <div class="public-profile-hero">
+      <span class="lobby-account-tier">${rank.badge}</span>
+      <div>
+        <strong>${escapeHtml(entry.nickname ?? "Operator")}</strong>
+        <small>${rank.label} / ${formatValue(entry.rankScore)} RP</small>
+      </div>
+    </div>
+    <dl class="public-profile-stats">
+      <div><dt>누적 가치</dt><dd>${formatValue(entry.lifetimeLootValue)}</dd></div>
+      <div><dt>게임</dt><dd>${formatValue(entry.gamesCompleted)}</dd></div>
+      <div><dt>킬 / 데스</dt><dd>${formatValue(entry.kills)} / ${formatValue(entry.deaths)}</dd></div>
+      <div><dt>K/D</dt><dd>${kd}</dd></div>
+      <div><dt>탈출</dt><dd>${formatValue(entry.extracts)}</dd></div>
+      <div><dt>생존률</dt><dd>${survival}%</dd></div>
+      <div><dt>최고 가치</dt><dd>${formatValue(entry.bestGameValue)}</dd></div>
+    </dl>
+    <p class="public-profile-note">공개 프로필은 시즌 랭킹에 표시되는 전적만 보여줍니다.</p>
+  `;
+  publicProfileOverlay.hidden = false;
+}
+
+function closePublicProfile() {
+  if (publicProfileOverlay) {
+    publicProfileOverlay.hidden = true;
+  }
+}
+
+function findLeaderboardEntry(accountId) {
+  if (!accountId || !leaderboardCache?.rankings) {
+    return null;
+  }
+
+  return Object.values(leaderboardCache.rankings)
+    .flat()
+    .find((entry) => entry.accountId === accountId) ?? null;
+}
+
+function getRankFromScore(score) {
+  let current = RANK_TIERS[0];
+  RANK_TIERS.forEach((tier) => {
+    if (Number(score ?? 0) >= tier.min) current = tier;
+  });
+  return current;
 }
 
 function getCosmeticCategoryLabel(category) {
