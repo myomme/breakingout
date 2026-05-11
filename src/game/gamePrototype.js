@@ -218,6 +218,7 @@ let activeGuidePage = 0;
 let leaderboardCache = null;
 let leaderboardCacheAt = 0;
 let pendingAccountAuthAction = null;
+let lobbyEventPanelCollapsed = false;
 let lastActivePlayerIndexForUi = null;
 const unreadTabs = new Set();
 const lastBagCountsByPlayer = new Map();
@@ -290,6 +291,36 @@ const COSMETIC_CATALOG = [
     price: 160
   },
   {
+    id: "nameplate_medtech",
+    category: "nameplate",
+    categoryLabel: "이름표",
+    label: "메드테크 플레이트",
+    rarity: "Rare",
+    preview: "MED",
+    description: "청록색 의료 장비 라인이 들어간 이름표입니다. 침착한 구조대 느낌을 줍니다.",
+    price: 130
+  },
+  {
+    id: "nameplate_goldline",
+    category: "nameplate",
+    categoryLabel: "이름표",
+    label: "골드라인 플레이트",
+    rarity: "Epic",
+    preview: "GOLD",
+    description: "검은 바탕에 금색 라인을 얹은 고급 이름표입니다. 로비에서 확실히 눈에 띕니다.",
+    price: 260
+  },
+  {
+    id: "nameplate_bloodmark",
+    category: "nameplate",
+    categoryLabel: "이름표",
+    label: "블러드마크 플레이트",
+    rarity: "Legend",
+    preview: "MARK",
+    description: "짙은 붉은 전투 흔적을 남기는 이름표입니다. 킬러 성향을 강하게 보여줍니다.",
+    price: 420
+  },
+  {
     id: "chat_radio",
     category: "chatBubble",
     categoryLabel: "채팅",
@@ -308,6 +339,36 @@ const COSMETIC_CATALOG = [
     preview: "AMBER",
     description: "주황색 경고등 같은 말풍선입니다. 메시지가 로그 사이에서도 눈에 잘 들어옵니다.",
     price: 140
+  },
+  {
+    id: "chat_nightops",
+    category: "chatBubble",
+    categoryLabel: "채팅",
+    label: "나이트옵스 말풍선",
+    rarity: "Rare",
+    preview: "NIGHT",
+    description: "어두운 야간 작전풍 말풍선입니다. 낮은 명도와 녹색 라인으로 전술적인 느낌을 줍니다.",
+    price: 120
+  },
+  {
+    id: "chat_signal",
+    category: "chatBubble",
+    categoryLabel: "채팅",
+    label: "시그널 말풍선",
+    rarity: "Epic",
+    preview: "PING",
+    description: "푸른 통신 신호 테두리가 들어간 말풍선입니다. 멀티 채팅에서 존재감이 강합니다.",
+    price: 230
+  },
+  {
+    id: "chat_bloodred",
+    category: "chatBubble",
+    categoryLabel: "채팅",
+    label: "블러드레드 말풍선",
+    rarity: "Legend",
+    preview: "RED",
+    description: "붉은 경고등처럼 뜨는 말풍선입니다. 전투적인 메시지에 잘 어울립니다.",
+    price: 360
   },
   {
     id: "token_white_ring",
@@ -330,6 +391,26 @@ const COSMETIC_CATALOG = [
     price: 180
   },
   {
+    id: "token_signal_blue",
+    category: "tokenSkin",
+    categoryLabel: "말",
+    label: "시그널 블루",
+    rarity: "Rare",
+    preview: "●",
+    description: "푸른 통신 신호 색상의 말 스킨입니다. 추후 전용 링 효과와 함께 확장됩니다.",
+    price: 170
+  },
+  {
+    id: "token_hazard",
+    category: "tokenSkin",
+    categoryLabel: "말",
+    label: "해저드 토큰",
+    rarity: "Epic",
+    preview: "◆",
+    description: "위험 구역 표식 같은 말 스킨입니다. 전술 지도에서 강한 시인성을 목표로 합니다.",
+    price: 280
+  },
+  {
     id: "title_rookie",
     category: "title",
     categoryLabel: "칭호",
@@ -348,6 +429,36 @@ const COSMETIC_CATALOG = [
     preview: "CONTRACT",
     description: "돈 받고 들어온 전문 계약자 칭호입니다. 전적 카드에 조금 더 무게감을 줍니다.",
     price: 130
+  },
+  {
+    id: "title_pathfinder",
+    category: "title",
+    categoryLabel: "칭호",
+    label: "패스파인더",
+    rarity: "Rare",
+    preview: "PATH",
+    description: "탈출로와 이동 경로를 잘 읽는 플레이어에게 어울리는 칭호입니다.",
+    price: 180
+  },
+  {
+    id: "title_blackbox",
+    category: "title",
+    categoryLabel: "칭호",
+    label: "블랙박스 회수자",
+    rarity: "Epic",
+    preview: "BOX",
+    description: "고가치 루팅을 노리는 플레이어에게 어울리는 묵직한 칭호입니다.",
+    price: 280
+  },
+  {
+    id: "title_raidlegend",
+    category: "title",
+    categoryLabel: "칭호",
+    label: "레이드 레전드",
+    rarity: "Legend",
+    preview: "LEGEND",
+    description: "오랜 시즌 기록을 남긴 플레이어에게 어울리는 최상위 칭호입니다.",
+    price: 500
   }
 ];
 let beginnerHelpEnabled = true;
@@ -797,6 +908,7 @@ function ensureLobbyShellUi() {
   eventPanel.className = "lobby-event-panel";
   eventPanel.setAttribute("aria-label", "알림과 이벤트");
   eventPanel.innerHTML = `
+    <button class="lobby-event-toggle" type="button" data-lobby-event-toggle aria-label="알림 패널 접기">›</button>
     <div class="lobby-event-panel-header">
       <span>알림</span>
       <strong>오늘의 작전</strong>
@@ -843,6 +955,11 @@ function ensureLobbyShellUi() {
     handleLobbyMenuAction(button.dataset.lobbyMenu);
   });
   eventPanel.addEventListener("click", (event) => {
+    const toggle = event.target.closest("[data-lobby-event-toggle]");
+    if (toggle) {
+      toggleLobbyEventPanel(eventPanel);
+      return;
+    }
     const button = event.target.closest("[data-lobby-info]");
     if (!button) {
       return;
@@ -858,7 +975,34 @@ function ensureLobbyShellUi() {
   });
 
   panel.dataset.shellReady = "true";
+  initializeLobbyEventPanel(eventPanel);
   refreshLobbyShellActiveMenu();
+}
+
+function initializeLobbyEventPanel(panel) {
+  lobbyEventPanelCollapsed = window.matchMedia?.("(max-width: 1180px)")?.matches ?? false;
+  panel.classList.toggle("is-collapsed", lobbyEventPanelCollapsed);
+  updateLobbyEventToggle(panel);
+}
+
+function toggleLobbyEventPanel(panel = document.querySelector(".lobby-event-panel")) {
+  if (!panel) {
+    return;
+  }
+
+  lobbyEventPanelCollapsed = !panel.classList.contains("is-collapsed");
+  panel.classList.toggle("is-collapsed", lobbyEventPanelCollapsed);
+  updateLobbyEventToggle(panel);
+}
+
+function updateLobbyEventToggle(panel = document.querySelector(".lobby-event-panel")) {
+  const toggle = panel?.querySelector("[data-lobby-event-toggle]");
+  if (!toggle) {
+    return;
+  }
+
+  toggle.textContent = panel.classList.contains("is-collapsed") ? "<" : ">";
+  toggle.setAttribute("aria-label", panel.classList.contains("is-collapsed") ? "알림 패널 펼치기" : "알림 패널 접기");
 }
 
 function ensureLobbyInfoUi() {

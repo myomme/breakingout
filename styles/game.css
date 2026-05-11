@@ -894,6 +894,29 @@ body {
   background: rgba(75, 45, 25, 0.68);
 }
 
+.session-chat-message.chat-bubble--chat_nightops {
+  border-left-color: rgba(115, 164, 128, 0.88);
+  background:
+    linear-gradient(135deg, rgba(40, 78, 54, 0.26), rgba(9, 14, 12, 0.62)),
+    rgba(8, 12, 12, 0.58);
+}
+
+.session-chat-message.chat-bubble--chat_signal {
+  border-left-color: rgba(99, 194, 255, 0.92);
+  background:
+    radial-gradient(circle at 12% 18%, rgba(99, 194, 255, 0.22), transparent 36%),
+    rgba(8, 24, 34, 0.62);
+  box-shadow: 0 0 18px rgba(99, 194, 255, 0.08);
+}
+
+.session-chat-message.chat-bubble--chat_bloodred {
+  border-left-color: rgba(255, 98, 82, 0.96);
+  background:
+    linear-gradient(135deg, rgba(118, 20, 19, 0.36), rgba(12, 8, 8, 0.66)),
+    rgba(31, 8, 7, 0.62);
+  box-shadow: 0 0 20px rgba(255, 98, 82, 0.1);
+}
+
 .session-chat-message div {
   display: flex;
   justify-content: space-between;
@@ -1445,6 +1468,32 @@ button.room-slot-ready {
   border: 1px solid rgba(236, 224, 196, 0.16);
   background: rgba(6, 8, 8, 0.44);
   box-shadow: 0 16px 42px rgba(0, 0, 0, 0.22);
+  transition: transform 180ms ease, opacity 180ms ease;
+}
+
+.lobby-event-panel.is-collapsed {
+  transform: translateX(calc(100% - 40px));
+}
+
+.lobby-event-toggle {
+  position: absolute;
+  top: 12px;
+  left: -38px;
+  z-index: 2;
+  display: grid;
+  width: 38px;
+  height: 58px;
+  min-height: 0 !important;
+  place-items: center;
+  border: 1px solid rgba(236, 224, 196, 0.16) !important;
+  border-right: 0 !important;
+  border-radius: 14px 0 0 14px !important;
+  background: rgba(8, 12, 12, 0.82) !important;
+  color: #efffcf !important;
+  font-size: 22px !important;
+  font-weight: 1000 !important;
+  padding: 0 !important;
+  box-shadow: -10px 10px 30px rgba(0, 0, 0, 0.22);
 }
 
 .lobby-event-panel-header,
@@ -1472,6 +1521,11 @@ button.room-slot-ready {
 
 .lobby-event-panel button:hover {
   background: rgba(185, 232, 109, 0.08);
+}
+
+.lobby-event-panel.is-collapsed .lobby-event-panel-header,
+.lobby-event-panel.is-collapsed .lobby-event-panel-list {
+  pointer-events: none;
 }
 
 .lobby-event-panel-header span,
@@ -2201,6 +2255,29 @@ button.room-slot-ready {
   background:
     linear-gradient(135deg, rgba(180, 142, 255, 0.14), transparent 42%),
     rgba(8, 10, 10, 0.62);
+}
+
+.lobby-account-card--nameplate_medtech {
+  border-color: rgba(80, 210, 184, 0.42);
+  background:
+    linear-gradient(135deg, rgba(80, 210, 184, 0.13), transparent 42%),
+    rgba(8, 16, 15, 0.64);
+}
+
+.lobby-account-card--nameplate_goldline {
+  border-color: rgba(246, 204, 103, 0.52);
+  background:
+    linear-gradient(135deg, rgba(246, 204, 103, 0.18), transparent 40%),
+    rgba(18, 14, 7, 0.68);
+  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.3), inset 0 0 0 1px rgba(246, 204, 103, 0.1);
+}
+
+.lobby-account-card--nameplate_bloodmark {
+  border-color: rgba(255, 98, 82, 0.54);
+  background:
+    linear-gradient(135deg, rgba(255, 98, 82, 0.18), transparent 38%),
+    rgba(20, 8, 7, 0.7);
+  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.34), inset 4px 0 0 rgba(255, 98, 82, 0.72);
 }
 
 #startOverlayStatus {
@@ -3845,12 +3922,50 @@ dd {
   color: #dfe3ff;
 }
 
+.cosmetic-preview--nameplate_medtech,
+.cosmetic-preview--chat_nightops {
+  background:
+    radial-gradient(circle at 50% 40%, rgba(80, 210, 184, 0.3), transparent 56%),
+    #071413;
+  color: #bdfff0;
+}
+
+.cosmetic-preview--nameplate_goldline {
+  background:
+    radial-gradient(circle at 50% 40%, rgba(246, 204, 103, 0.34), transparent 56%),
+    #171006;
+  color: #ffe3a3;
+}
+
+.cosmetic-preview--nameplate_bloodmark,
+.cosmetic-preview--chat_bloodred {
+  background:
+    radial-gradient(circle at 50% 40%, rgba(255, 98, 82, 0.34), transparent 56%),
+    #170606;
+  color: #ffd2ca;
+}
+
 .cosmetic-preview--chat_amber,
 .cosmetic-preview--token_ember {
   background:
     radial-gradient(circle at 50% 40%, rgba(244, 162, 97, 0.34), transparent 56%),
     #160d08;
   color: #ffd6a8;
+}
+
+.cosmetic-preview--chat_signal,
+.cosmetic-preview--token_signal_blue {
+  background:
+    radial-gradient(circle at 50% 40%, rgba(99, 194, 255, 0.34), transparent 56%),
+    #06121a;
+  color: #c5ecff;
+}
+
+.cosmetic-preview--token_hazard {
+  background:
+    radial-gradient(circle at 50% 40%, rgba(255, 212, 87, 0.34), transparent 56%),
+    #1a1505;
+  color: #ffe28a;
 }
 
 .cosmetic-preview--token_white_ring {
@@ -4582,8 +4697,9 @@ dd {
   }
 
   .lobby-event-panel {
-    grid-row: 5;
-    margin-top: 0;
+    top: 38dvh;
+    right: max(8px, env(safe-area-inset-right));
+    width: min(260px, calc(100vw - 52px));
   }
 
   .lobby-info-overlay {

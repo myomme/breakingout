@@ -651,6 +651,24 @@ export class GameRenderer {
         this.ctx.stroke();
       }
 
+      if (tokenSkin === "token_signal_blue") {
+        this.ctx.beginPath();
+        this.ctx.arc(center.x, center.y, active ? 13 : 11, 0, Math.PI * 2);
+        this.ctx.strokeStyle = "rgba(99, 194, 255, 0.58)";
+        this.ctx.lineWidth = 2;
+        this.ctx.stroke();
+      }
+
+      if (tokenSkin === "token_hazard") {
+        this.ctx.save();
+        this.ctx.translate(center.x, center.y);
+        this.ctx.rotate(Math.PI / 4);
+        this.ctx.strokeStyle = "rgba(255, 212, 87, 0.68)";
+        this.ctx.lineWidth = 2;
+        this.ctx.strokeRect(active ? -11 : -9, active ? -11 : -9, active ? 22 : 18, active ? 22 : 18);
+        this.ctx.restore();
+      }
+
       if (attackable || hitFlash) {
         this.ctx.beginPath();
         this.ctx.arc(center.x, center.y, hitFlash ? 18 : 15, 0, Math.PI * 2);
@@ -1165,6 +1183,14 @@ function getPlayerTokenFill({ active, attackable, hitFlash, tokenSkin }) {
     return active ? "#203b3d" : attackable ? "#b5302d" : "#5d8588";
   }
 
+  if (tokenSkin === "token_signal_blue") {
+    return active ? "#123d59" : attackable ? "#b5302d" : "#1b6f9b";
+  }
+
+  if (tokenSkin === "token_hazard") {
+    return active ? "#5a4610" : attackable ? "#b5302d" : "#8a6b1b";
+  }
+
   return active ? "#1b383a" : attackable ? "#b5302d" : "#4c7780";
 }
 
@@ -1175,6 +1201,14 @@ function getPlayerTokenStroke({ active, tokenSkin }) {
 
   if (tokenSkin === "token_white_ring") {
     return "#ffffff";
+  }
+
+  if (tokenSkin === "token_signal_blue") {
+    return active ? "#d6f3ff" : "#8ed8ff";
+  }
+
+  if (tokenSkin === "token_hazard") {
+    return active ? "#fff0a8" : "#ffd457";
   }
 
   return active ? "#ffffff" : "#e7efe8";
