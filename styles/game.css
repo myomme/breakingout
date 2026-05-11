@@ -1477,9 +1477,9 @@ button.room-slot-ready {
 
 .lobby-event-toggle {
   position: absolute;
-  top: 12px;
+  top: 18px;
   left: -34px;
-  z-index: 2;
+  z-index: -1;
   display: grid;
   width: 34px;
   height: 52px;
@@ -1496,6 +1496,19 @@ button.room-slot-ready {
   line-height: 1 !important;
   text-align: center !important;
   box-shadow: -10px 10px 30px rgba(0, 0, 0, 0.22);
+}
+
+.lobby-event-panel.is-collapsed .lobby-event-toggle {
+  z-index: 2;
+}
+
+.lobby-event-toggle::before {
+  content: ">";
+  display: block;
+}
+
+.lobby-event-panel.is-collapsed .lobby-event-toggle::before {
+  content: "<";
 }
 
 .lobby-event-panel-header,

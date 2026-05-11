@@ -1077,7 +1077,7 @@ function updateLobbyEventToggle(panel = document.querySelector(".lobby-event-pan
     return;
   }
 
-  toggle.textContent = panel.classList.contains("is-collapsed") ? "<" : ">";
+  toggle.textContent = "";
   toggle.setAttribute("aria-label", panel.classList.contains("is-collapsed") ? "알림 패널 펼치기" : "알림 패널 접기");
 }
 

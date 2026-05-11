@@ -855,12 +855,23 @@ function getCosmeticCatalog() {
   return [
     { id: "nameplate_ranger", category: "nameplate", price: 80 },
     { id: "nameplate_blacksite", category: "nameplate", price: 160 },
+    { id: "nameplate_medtech", category: "nameplate", price: 130 },
+    { id: "nameplate_goldline", category: "nameplate", price: 260 },
+    { id: "nameplate_bloodmark", category: "nameplate", price: 420 },
     { id: "chat_radio", category: "chatBubble", price: 60 },
     { id: "chat_amber", category: "chatBubble", price: 140 },
+    { id: "chat_nightops", category: "chatBubble", price: 120 },
+    { id: "chat_signal", category: "chatBubble", price: 230 },
+    { id: "chat_bloodred", category: "chatBubble", price: 360 },
     { id: "token_white_ring", category: "tokenSkin", price: 90 },
     { id: "token_ember", category: "tokenSkin", price: 180 },
+    { id: "token_signal_blue", category: "tokenSkin", price: 170 },
+    { id: "token_hazard", category: "tokenSkin", price: 280 },
     { id: "title_rookie", category: "title", price: 50 },
-    { id: "title_contractor", category: "title", price: 130 }
+    { id: "title_contractor", category: "title", price: 130 },
+    { id: "title_pathfinder", category: "title", price: 180 },
+    { id: "title_blackbox", category: "title", price: 280 },
+    { id: "title_raidlegend", category: "title", price: 500 }
   ];
 }
 
