@@ -1344,9 +1344,9 @@ button.room-slot-ready {
   height: 100dvh;
   max-height: none;
   overflow: hidden;
-  grid-template-columns: minmax(240px, 330px) minmax(380px, 720px) minmax(250px, 360px);
+  grid-template-columns: minmax(190px, 280px) minmax(360px, 620px) minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr) auto;
-  gap: 18px 28px;
+  gap: 18px 24px;
   padding:
     max(28px, env(safe-area-inset-top))
     max(32px, env(safe-area-inset-right))
@@ -1390,35 +1390,35 @@ button.room-slot-ready {
   grid-row: 2;
   align-self: center;
   display: grid;
-  gap: 10px;
-  width: min(330px, 100%);
+  gap: 8px;
+  width: min(270px, 100%);
 }
 
 .main-lobby-menu-button {
   display: grid;
-  gap: 4px;
+  gap: 3px;
   justify-items: start;
-  min-height: 72px;
+  min-height: 58px;
   border: 1px solid rgba(236, 224, 196, 0.14);
   border-left: 3px solid rgba(236, 224, 196, 0.16);
   border-radius: 0;
   background: rgba(8, 10, 10, 0.42);
   color: rgba(247, 242, 231, 0.78);
-  padding: 13px 18px;
+  padding: 10px 14px;
   text-align: left;
   box-shadow: 0 12px 34px rgba(0, 0, 0, 0.16);
 }
 
 .main-lobby-menu-button span {
-  font-size: 21px;
+  font-size: 18px;
   font-weight: 950;
   letter-spacing: 0;
 }
 
 .main-lobby-menu-button small {
-  max-width: 24ch;
+  max-width: 22ch;
   color: rgba(230, 220, 199, 0.68);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   line-height: 1.35;
 }
@@ -1434,12 +1434,14 @@ button.room-slot-ready {
 }
 
 .lobby-event-panel {
-  grid-column: 3;
-  grid-row: 2;
-  align-self: start;
+  position: fixed;
+  top: clamp(190px, 31dvh, 250px);
+  right: max(28px, env(safe-area-inset-right));
+  z-index: 6;
   display: grid;
   gap: 1px;
-  margin-top: 80px;
+  width: min(280px, calc(100vw - 56px));
+  margin-top: 0;
   border: 1px solid rgba(236, 224, 196, 0.16);
   background: rgba(6, 8, 8, 0.44);
   box-shadow: 0 16px 42px rgba(0, 0, 0, 0.22);
@@ -1450,12 +1452,12 @@ button.room-slot-ready {
   display: grid;
   gap: 5px;
   justify-items: start;
-  min-height: 66px;
+  min-height: 54px;
   border: 0;
   border-radius: 0;
   background: rgba(15, 18, 18, 0.58);
   color: rgba(248, 243, 232, 0.86);
-  padding: 12px 16px;
+  padding: 10px 12px;
   text-align: left;
 }
 
@@ -1474,14 +1476,14 @@ button.room-slot-ready {
 
 .lobby-event-panel-header span,
 .lobby-event-panel button span {
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 950;
 }
 
 .lobby-event-panel-header strong,
 .lobby-event-panel button small {
   color: rgba(230, 220, 199, 0.64);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
 }
 
@@ -1990,6 +1992,56 @@ button.room-slot-ready {
   box-shadow: 0 16px 42px rgba(0, 0, 0, 0.3);
   backdrop-filter: blur(12px);
   color: rgba(247, 242, 231, 0.86);
+}
+
+@media (min-width: 921px) and (max-width: 1180px) {
+  .start-overlay-panel {
+    grid-template-columns: minmax(160px, 230px) minmax(340px, 560px) minmax(0, 1fr);
+    gap: 16px 18px;
+    padding:
+      max(22px, env(safe-area-inset-top))
+      max(22px, env(safe-area-inset-right))
+      max(18px, env(safe-area-inset-bottom))
+      max(22px, env(safe-area-inset-left));
+  }
+
+  .start-overlay-panel h1 {
+    font-size: clamp(34px, 5vw, 58px);
+  }
+
+  .main-lobby-menu {
+    width: min(230px, 100%);
+    gap: 7px;
+  }
+
+  .main-lobby-menu-button {
+    min-height: 54px;
+    padding: 9px 12px;
+  }
+
+  .main-lobby-menu-button span {
+    font-size: 16px;
+  }
+
+  .main-lobby-menu-button small {
+    font-size: 10px;
+    line-height: 1.25;
+  }
+
+  .lobby-step.is-active {
+    max-height: min(72dvh, 680px);
+    padding: 14px;
+  }
+
+  .lobby-event-panel {
+    right: max(22px, env(safe-area-inset-right));
+    width: min(250px, calc(100vw - 44px));
+  }
+
+  .lobby-account-card {
+    right: max(22px, env(safe-area-inset-right));
+    width: min(390px, calc(100vw - 44px));
+  }
 }
 
 .lobby-account-card-empty {
