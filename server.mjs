@@ -12,6 +12,7 @@ const clients = new Set();
 let rooms = [];
 const snapshots = new Map();
 const chatMessagesByRoom = new Map();
+const LOBBY_CHAT_ROOM_ID = "global_lobby";
 const ROOM_TTL_MS = 12 * 60 * 60 * 1000;
 const MAX_CHAT_MESSAGES = 80;
 const ACCOUNT_DB_PATH = process.env.ACCOUNT_DB_PATH
@@ -876,6 +877,11 @@ function getCosmeticCatalog() {
 }
 
 function handleChatMessage(client, message) {
+  if (message.roomId === LOBBY_CHAT_ROOM_ID) {
+    handleLobbyChatMessage(client, message);
+    return;
+  }
+
   const room = findRoom(message.roomId);
   if (!room) {
     sendJson(client, { type: "chatRejected", sourceId: "server", roomId: message.roomId ?? null, message: "Room not found", at: Date.now() });
@@ -910,6 +916,35 @@ function handleChatMessage(client, message) {
   broadcast({ type: "chatMessage", sourceId: "server", roomId: room.id, message: chatMessage, at: Date.now() });
 }
 
+function handleLobbyChatMessage(client, message) {
+  if (!message.sourceId) {
+    sendJson(client, { type: "chatRejected", sourceId: "server", roomId: LOBBY_CHAT_ROOM_ID, message: "Login required", at: Date.now() });
+    return;
+  }
+
+  const text = trimChatText(String(message.text ?? "").replace(/\s+/g, " ").trim());
+  if (!text) {
+    sendJson(client, { type: "chatRejected", sourceId: "server", roomId: LOBBY_CHAT_ROOM_ID, message: "Empty message", at: Date.now() });
+    return;
+  }
+
+  const account = getAccountRecord(message.sourceId, message.nickname);
+  const chatMessage = {
+    id: message.messageId ?? crypto.randomUUID(),
+    roomId: LOBBY_CHAT_ROOM_ID,
+    playerId: message.sourceId,
+    nickname: account.nickname || message.nickname || "Player",
+    text,
+    cosmetics: account.cosmetics?.equipped ?? {},
+    phase: null,
+    raid: null,
+    at: Date.now()
+  };
+  const messages = [...(chatMessagesByRoom.get(LOBBY_CHAT_ROOM_ID) ?? []), chatMessage].slice(-MAX_CHAT_MESSAGES);
+  chatMessagesByRoom.set(LOBBY_CHAT_ROOM_ID, messages);
+  broadcast({ type: "chatMessage", sourceId: "server", roomId: LOBBY_CHAT_ROOM_ID, message: chatMessage, at: Date.now() });
+}
+
 function trimChatText(value, maxWeight = 100) {
   let weight = 0;
   let result = "";
@@ -923,6 +958,10 @@ function trimChatText(value, maxWeight = 100) {
 }
 
 function handleClearChat(message) {
+  if (message.roomId === LOBBY_CHAT_ROOM_ID) {
+    return;
+  }
+
   const room = findRoom(message.roomId);
   if (!room || room.hostId !== message.sourceId) return;
   chatMessagesByRoom.delete(room.id);
@@ -1440,6 +1479,10 @@ function pruneRooms() {
   }
 
   for (const roomId of chatMessagesByRoom.keys()) {
+    if (roomId === LOBBY_CHAT_ROOM_ID) {
+      continue;
+    }
+
     if (!roomIds.has(roomId)) {
       chatMessagesByRoom.delete(roomId);
     }

@@ -255,6 +255,7 @@ const RANK_TIERS = [
 ];
 const PRESENCE_HEARTBEAT_MS = 4000;
 const RECONNECT_GRACE_MS = 90000;
+const LOBBY_CHAT_ROOM_ID = "global_lobby";
 let roomSyncChannel = null;
 let gameServerSocket = null;
 let gameServerConnected = false;
@@ -2216,6 +2217,7 @@ function completeAccountLogin({ account, sessionToken }) {
   showLobbyStep("lobby");
   renderLobby();
   requestServerRooms();
+  requestChatHistory(LOBBY_CHAT_ROOM_ID);
   setStartStatus(`${lobbySession.nickname} 계정으로 접속했습니다.`);
 }
 
@@ -3906,6 +3908,7 @@ function initServerSync() {
     }
     requestServerRooms();
     requestAccountResume();
+    requestChatHistory(LOBBY_CHAT_ROOM_ID);
     if (lobbySession.currentRoom?.id) {
       requestServerGameSnapshot(lobbySession.currentRoom.id);
       requestChatHistory(lobbySession.currentRoom.id);
@@ -4099,6 +4102,7 @@ function handleRoomActionResult(message) {
     if (message.action === "leaveRoom") {
       lobbySession.currentRoom = null;
       forgetCurrentRoom();
+      requestChatHistory(LOBBY_CHAT_ROOM_ID);
       renderLobby();
       showLobbyStep("lobby");
       setStartStatus("로비로 돌아왔습니다.");
@@ -5385,8 +5389,8 @@ function ensureSessionChatUi() {
     lobbyChat.innerHTML = `
       <header class="session-chat-header">
         <div>
-          <strong>작전 채팅</strong>
-          <span>방 세션 전용</span>
+          <strong data-chat-title="lobby">로비 채팅</strong>
+          <span data-chat-subtitle="lobby">전체 로비</span>
         </div>
         <div class="session-chat-actions">
           <button type="button" data-chat-action="toggle" data-chat-target="lobby" aria-label="채팅 접기">-</button>
@@ -5395,7 +5399,7 @@ function ensureSessionChatUi() {
       </header>
       <ul id="lobbyChatMessages" class="session-chat-messages"></ul>
       <form id="lobbyChatForm" class="session-chat-form">
-        <input id="lobbyChatInput" type="text" maxlength="200" placeholder="방에 메시지 보내기" autocomplete="off">
+        <input id="lobbyChatInput" type="text" maxlength="200" placeholder="로비에 메시지 보내기" autocomplete="off">
         <button type="submit">전송</button>
       </form>
     `;
@@ -5632,19 +5636,21 @@ function sendChatFromInput(input) {
     enforceChatInputLimit(input);
   }
   const text = trimChatText(input?.value ?? "").trim();
+  const roomId = getChatRoomIdForInput(input);
   if (chatDisabled) {
     setChatInputStatus("채팅이 비활성화되어 있습니다.");
     return;
   }
-  if (!text || !lobbySession.currentRoom?.id) {
-    setChatInputStatus(!text ? "메시지를 입력하세요." : "방에 입장한 뒤 채팅할 수 있습니다.");
+  if (!text || !roomId) {
+    setChatInputStatus(!text ? "메시지를 입력하세요." : "로그인 후 채팅할 수 있습니다.");
     return;
   }
 
   const ok = sendServerMessage({
     type: "chatMessage",
-    roomId: lobbySession.currentRoom.id,
+    roomId,
     sourceId: lobbySession.localPlayerId,
+    nickname: lobbySession.nickname,
     text,
     raid: gameStarted ? state?.raid : null,
     phase: gameStarted ? state?.phase : null,
@@ -5658,6 +5664,18 @@ function sendChatFromInput(input) {
   } else {
     setChatInputStatus("서버 연결 후 채팅을 사용할 수 있습니다.");
   }
+}
+
+function getChatRoomIdForInput(input) {
+  if (!lobbySession.localPlayerId || !lobbySession.accountId) {
+    return "";
+  }
+
+  if (input === gameChatInput || gameStarted) {
+    return lobbySession.currentRoom?.id ?? "";
+  }
+
+  return lobbySession.currentRoom?.id ?? LOBBY_CHAT_ROOM_ID;
 }
 
 function enforceChatInputLimit(input) {
@@ -5690,46 +5708,66 @@ function getChatCharWeight(char) {
 }
 
 function handleChatHistory(message) {
-  if (message.roomId !== lobbySession.currentRoom?.id) {
+  if (!isKnownChatRoom(message.roomId)) {
     return;
   }
 
-  chatMessages.length = 0;
-  seenChatMessageIds.clear();
+  removeLocalChatMessages(message.roomId);
   (message.messages ?? []).forEach((entry) => addChatMessage(entry, { unread: false }));
   renderSessionChat();
 }
 
 function handleChatMessage(message) {
-  if (message.roomId !== lobbySession.currentRoom?.id || !message.message) {
+  if (!isKnownChatRoom(message.roomId) || !message.message) {
     return;
   }
 
   const mine = message.message.playerId === lobbySession.localPlayerId;
-  const gameChatClosed = gameStarted && gameChatPanel?.classList.contains("is-collapsed");
+  const gameChatClosed = gameStarted
+    && message.roomId === lobbySession.currentRoom?.id
+    && gameChatPanel?.classList.contains("is-collapsed");
   addChatMessage(message.message, { unread: !mine && gameChatClosed });
   renderSessionChat();
 }
 
 function handleChatCleared(message) {
-  if (message.roomId !== lobbySession.currentRoom?.id) {
+  if (!isKnownChatRoom(message.roomId)) {
     return;
   }
 
-  clearLocalChatMessages();
+  clearLocalChatMessages(message.roomId);
 }
 
 function handleChatRejected(message) {
-  if (message.roomId && message.roomId !== lobbySession.currentRoom?.id) {
+  if (message.roomId && !isKnownChatRoom(message.roomId)) {
     return;
   }
 
   setChatInputStatus(`채팅 실패: ${message.message ?? "서버에서 거절되었습니다."}`);
 }
 
-function clearLocalChatMessages() {
-  chatMessages.length = 0;
-  seenChatMessageIds.clear();
+function isKnownChatRoom(roomId) {
+  return roomId === LOBBY_CHAT_ROOM_ID || roomId === lobbySession.currentRoom?.id;
+}
+
+function removeLocalChatMessages(roomId) {
+  for (let index = chatMessages.length - 1; index >= 0; index -= 1) {
+    if (chatMessages[index].roomId !== roomId) {
+      continue;
+    }
+
+    seenChatMessageIds.delete(chatMessages[index].id);
+    chatMessages.splice(index, 1);
+  }
+}
+
+function clearLocalChatMessages(roomId = null) {
+  if (roomId) {
+    removeLocalChatMessages(roomId);
+  } else {
+    chatMessages.length = 0;
+    seenChatMessageIds.clear();
+  }
   unreadGameChatCount = 0;
   renderSessionChat();
 }
@@ -5739,6 +5777,9 @@ function addChatMessage(message, { unread = false } = {}) {
     return;
   }
 
+  if (!message.roomId) {
+    message.roomId = lobbySession.currentRoom?.id ?? LOBBY_CHAT_ROOM_ID;
+  }
   seenChatMessageIds.add(message.id);
   chatMessages.push(message);
   while (chatMessages.length > 80) {
@@ -5758,24 +5799,39 @@ function addChatMessage(message, { unread = false } = {}) {
 function renderSessionChat() {
   ensureSessionChatUi();
   const lobbyChatPanel = document.querySelector(".session-chat--lobby");
+  const lobbyRoomId = lobbySession.currentRoom?.id ?? LOBBY_CHAT_ROOM_ID;
+  const lobbyChannelLabel = lobbySession.currentRoom?.id ? "방 세션 전용" : "전체 로비";
+  const lobbyTitle = lobbySession.currentRoom?.id ? "작전 채팅" : "로비 채팅";
   if (lobbyChatPanel) {
-    lobbyChatPanel.hidden = gameStarted || !lobbySession.currentRoom;
+    lobbyChatPanel.hidden = gameStarted || !lobbySession.accountId;
+    const title = lobbyChatPanel.querySelector("[data-chat-title='lobby']");
+    const subtitle = lobbyChatPanel.querySelector("[data-chat-subtitle='lobby']");
+    if (title) title.textContent = lobbyTitle;
+    if (subtitle) subtitle.textContent = lobbyChannelLabel;
+    if (lobbyChatInput) {
+      lobbyChatInput.placeholder = lobbySession.currentRoom?.id ? "방에 메시지 보내기" : "로비에 메시지 보내기";
+    }
   }
   if (gameChatPanel) {
     gameChatPanel.hidden = !gameStarted;
   }
 
-  const html = chatMessages.length
-    ? chatMessages.map(renderChatMessage).join("")
+  const lobbyMessages = chatMessages.filter((message) => message.roomId === lobbyRoomId);
+  const gameMessages = chatMessages.filter((message) => message.roomId === lobbySession.currentRoom?.id);
+  const lobbyHtml = lobbyMessages.length
+    ? lobbyMessages.map(renderChatMessage).join("")
+    : "<li class=\"session-chat-empty\">아직 메시지가 없습니다.</li>";
+  const gameHtml = gameMessages.length
+    ? gameMessages.map(renderChatMessage).join("")
     : "<li class=\"session-chat-empty\">아직 메시지가 없습니다.</li>";
 
   if (lobbyChatMessages) {
-    lobbyChatMessages.innerHTML = html;
+    lobbyChatMessages.innerHTML = lobbyHtml;
     scrollChatToBottom(lobbyChatMessages);
   }
 
   if (gameChatMessages) {
-    gameChatMessages.innerHTML = html;
+    gameChatMessages.innerHTML = gameHtml;
     scrollChatToBottom(gameChatMessages);
   }
 
