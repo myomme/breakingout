@@ -212,6 +212,10 @@ let corpseLootTimerInterval = 0;
 let currentMapData = null;
 let activeCustomizeCategory = "all";
 let activeShopCategory = "all";
+let activeLeaderboardCategory = "rp";
+let activeGuidePage = 0;
+let leaderboardCache = null;
+let leaderboardCacheAt = 0;
 let lastActivePlayerIndexForUi = null;
 const unreadTabs = new Set();
 const lastBagCountsByPlayer = new Map();
@@ -918,16 +922,19 @@ function handleLobbyMenuAction(menu) {
   }
 }
 
-function openLobbyInfoPanel(type = "guide") {
+async function openLobbyInfoPanel(type = "guide") {
   ensureLobbyInfoUi();
   if (!lobbyInfoOverlay || !lobbyInfoTitle || !lobbyInfoBody) {
     return;
   }
 
-  const panel = getLobbyInfoPanel(type);
+  lobbyInfoTitle.textContent = getLobbyInfoTitle(type);
+  lobbyInfoBody.innerHTML = `<div class="lobby-info-summary"><span>Loading</span><strong>정보를 불러오는 중입니다.</strong></div>`;
+  lobbyInfoOverlay.hidden = false;
+  const panel = await getLobbyInfoPanel(type);
   lobbyInfoTitle.textContent = panel.title;
   lobbyInfoBody.innerHTML = panel.markup;
-  lobbyInfoOverlay.hidden = false;
+  bindLobbyInfoPanelActions(type);
 }
 
 function closeLobbyInfoPanel() {
@@ -936,7 +943,17 @@ function closeLobbyInfoPanel() {
   }
 }
 
-function getLobbyInfoPanel(type) {
+function getLobbyInfoTitle(type) {
+  const labels = {
+    guide: "가이드",
+    ranking: "순위",
+    codex: "도감",
+    missions: "임무"
+  };
+  return labels[type] ?? "작전 정보";
+}
+
+async function getLobbyInfoPanel(type) {
   const account = readAccountRecord();
   const stats = account.stats ?? {};
   const rank = getAccountRank(account);
@@ -947,22 +964,40 @@ function getLobbyInfoPanel(type) {
   const lifetimeValue = Number(account.wallet?.lifetimeLootValue ?? 0);
 
   if (type === "ranking") {
-    const rows = RANK_TIERS.map((tier) => `
-      <li class="${rank.label === tier.label ? "is-current" : ""}">
-        <span class="lobby-rank-badge">${tier.badge}</span>
-        <strong>${tier.label}</strong>
-        <em>${formatValue(tier.min)} RP</em>
-      </li>
-    `).join("");
+    const leaderboard = await fetchLeaderboardData();
+    const rows = renderLeaderboardRows(leaderboard.rankings?.[activeLeaderboardCategory] ?? []);
     return {
       title: "랭크",
       markup: `
-        <div class="lobby-info-summary">
-          <span>현재 랭크</span>
-          <strong>${rank.label} / ${formatValue(rank.score)} RP</strong>
-          <p>킬은 RP를 올리고, 사망은 RP를 조금 낮춥니다. 레전드는 약 250킬 수준의 장기 목표입니다.</p>
+        <div class="leaderboard-tabs" role="tablist" aria-label="랭킹 분류">
+          <button class="${activeLeaderboardCategory === "rp" ? "is-active" : ""}" type="button" data-leaderboard-category="rp">RP</button>
+          <button class="${activeLeaderboardCategory === "value" ? "is-active" : ""}" type="button" data-leaderboard-category="value">누적 가치</button>
+          <button class="${activeLeaderboardCategory === "survival" ? "is-active" : ""}" type="button" data-leaderboard-category="survival">생존률</button>
+          <button class="${activeLeaderboardCategory === "kd" ? "is-active" : ""}" type="button" data-leaderboard-category="kd">K/D</button>
         </div>
-        <ol class="lobby-rank-list">${rows}</ol>
+        <div class="lobby-info-summary">
+          <span>시즌 랭킹</span>
+          <strong>${getLeaderboardCategoryLabel(activeLeaderboardCategory)}</strong>
+          <p>가입한 계정 중 게임을 1회 이상 완료한 유저만 표시됩니다. 현재 내 랭크는 ${rank.label} / ${formatValue(rank.score)} RP입니다.</p>
+        </div>
+        <div class="leaderboard-table">
+          <div class="leaderboard-head">
+            <span>#</span><span>오퍼레이터</span><span>${getLeaderboardMetricLabel(activeLeaderboardCategory)}</span><span>전적</span>
+          </div>
+          ${rows}
+        </div>
+        <details class="rank-thresholds">
+          <summary>랭크 기준 보기</summary>
+          <ol class="lobby-rank-list">
+            ${RANK_TIERS.map((tier) => `
+              <li class="${rank.label === tier.label ? "is-current" : ""}">
+                <span class="lobby-rank-badge">${tier.badge}</span>
+                <strong>${tier.label}</strong>
+                <em>${formatValue(tier.min)} RP</em>
+              </li>
+            `).join("")}
+          </ol>
+        </details>
       `
     };
   }
@@ -997,20 +1032,7 @@ function getLobbyInfoPanel(type) {
 
   return {
     title: "가이드",
-    markup: `
-      <div class="lobby-info-summary">
-        <span>처음 시작</span>
-        <strong>방을 만들고 슬롯을 세팅한 뒤 READY를 확인하세요.</strong>
-        <p>방장은 맵과 COM 슬롯을 관리하고, 각 플레이어는 자기 슬롯의 무장만 바꿀 수 있습니다.</p>
-      </div>
-      <div class="lobby-info-grid">
-        <article><strong>작전 시작</strong><p>방 목록에서 참가하거나 새 방을 만들고, 모든 비방장 플레이어가 READY하면 시작할 수 있습니다.</p></article>
-        <article><strong>레이드 목표</strong><p>파밍, 교전, 생존, 탈출을 반복하며 최종 가치를 경쟁합니다.</p></article>
-        <article><strong>전적 성장</strong><p>킬과 탈출로 경험치와 RP를 얻고, 사망하면 랭크 점수가 일부 감소합니다.</p></article>
-        <article><strong>외형 보상</strong><p>루팅 가치는 말 스킨, 이름표, 채팅 말풍선, 칭호처럼 밸런스에 영향 없는 보상에 사용합니다.</p></article>
-      </div>
-      <p class="lobby-info-footnote">현재 기록: ${formatValue(kills)}킬 / ${formatValue(deaths)}데스 / ${formatValue(extracts)}탈출</p>
-    `
+    markup: renderGuideBook(kills, deaths, extracts)
   };
 }
 
@@ -1025,6 +1047,236 @@ function renderLobbyMission(title, current, goal, description) {
       <i><b style="width: ${progress}%"></b></i>
       <p>${escapeHtml(description)}</p>
     </article>
+  `;
+}
+
+async function fetchLeaderboardData() {
+  const now = Date.now();
+  if (leaderboardCache && now - leaderboardCacheAt < 30_000) {
+    return leaderboardCache;
+  }
+
+  try {
+    const response = await fetch("./api/leaderboard", { cache: "no-store" });
+    if (!response.ok) {
+      throw new Error(`Leaderboard ${response.status}`);
+    }
+    leaderboardCache = await response.json();
+    leaderboardCacheAt = now;
+    return leaderboardCache;
+  } catch {
+    const account = readAccountRecord();
+    const fallbackEntry = createLocalLeaderboardEntry(account);
+    return {
+      ok: false,
+      count: fallbackEntry.gamesCompleted > 0 ? 1 : 0,
+      rankings: {
+        rp: fallbackEntry.gamesCompleted > 0 ? [fallbackEntry] : [],
+        value: fallbackEntry.gamesCompleted > 0 ? [fallbackEntry] : [],
+        survival: fallbackEntry.gamesCompleted > 0 ? [fallbackEntry] : [],
+        kd: fallbackEntry.gamesCompleted > 0 ? [fallbackEntry] : []
+      }
+    };
+  }
+}
+
+function createLocalLeaderboardEntry(account) {
+  const stats = account.stats ?? {};
+  const gamesCompleted = Math.max(0, Number(stats.gamesCompleted ?? 0));
+  const kills = Math.max(0, Number(stats.kills ?? 0));
+  const deaths = Math.max(0, Number(stats.deaths ?? 0));
+  const extracts = Math.max(0, Number(stats.extracts ?? 0));
+  return {
+    rank: 1,
+    accountId: account.accountId ?? lobbySession.localPlayerId,
+    nickname: account.nickname ?? lobbySession.nickname ?? "Operator",
+    rankScore: getAccountRank(account).score,
+    lifetimeLootValue: Number(account.wallet?.lifetimeLootValue ?? 0),
+    gamesCompleted,
+    kills,
+    deaths,
+    extracts,
+    survivalRate: gamesCompleted > 0 ? extracts / gamesCompleted : 0,
+    kd: deaths > 0 ? kills / deaths : kills
+  };
+}
+
+function renderLeaderboardRows(rows) {
+  if (!rows.length) {
+    return `
+      <div class="leaderboard-empty">
+        <strong>아직 시즌 랭킹 기록이 없습니다.</strong>
+        <span>게임을 1회 이상 완료하면 랭킹에 표시됩니다.</span>
+      </div>
+    `;
+  }
+
+  return rows.map((entry) => `
+    <div class="leaderboard-row ${entry.accountId === lobbySession.accountId ? "is-me" : ""}">
+      <span>${entry.rank}</span>
+      <strong>${escapeHtml(entry.nickname ?? "Operator")}</strong>
+      <em>${formatLeaderboardMetric(entry, activeLeaderboardCategory)}</em>
+      <small>${formatValue(entry.kills)}K / ${formatValue(entry.deaths)}D / ${formatValue(entry.extracts)}E</small>
+    </div>
+  `).join("");
+}
+
+function getLeaderboardCategoryLabel(category) {
+  const labels = {
+    rp: "RP별 랭킹",
+    value: "누적 가치 순 랭킹",
+    survival: "생존률 순 랭킹",
+    kd: "K/D 순 랭킹"
+  };
+  return labels[category] ?? "시즌 랭킹";
+}
+
+function getLeaderboardMetricLabel(category) {
+  const labels = {
+    rp: "RP",
+    value: "누적 가치",
+    survival: "생존률",
+    kd: "K/D"
+  };
+  return labels[category] ?? "점수";
+}
+
+function formatLeaderboardMetric(entry, category) {
+  if (category === "value") {
+    return formatValue(entry.lifetimeLootValue);
+  }
+  if (category === "survival") {
+    return `${Math.round(Number(entry.survivalRate ?? 0) * 100)}%`;
+  }
+  if (category === "kd") {
+    return Number(entry.kd ?? 0).toFixed(2);
+  }
+  return `${formatValue(entry.rankScore)} RP`;
+}
+
+function bindLobbyInfoPanelActions(type) {
+  if (!lobbyInfoBody) {
+    return;
+  }
+
+  if (type === "ranking") {
+    lobbyInfoBody.querySelectorAll("[data-leaderboard-category]").forEach((button) => {
+      button.addEventListener("click", () => {
+        activeLeaderboardCategory = button.dataset.leaderboardCategory ?? "rp";
+        openLobbyInfoPanel("ranking");
+      });
+    });
+  }
+
+  if (type === "guide") {
+    lobbyInfoBody.querySelectorAll("[data-guide-page]").forEach((button) => {
+      button.addEventListener("click", () => {
+        activeGuidePage = Number(button.dataset.guidePage ?? 0);
+        openLobbyInfoPanel("guide");
+      });
+    });
+    lobbyInfoBody.querySelectorAll("[data-guide-step]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const next = activeGuidePage + Number(button.dataset.guideStep ?? 0);
+        activeGuidePage = Math.max(0, Math.min(GUIDE_BOOK_PAGES.length - 1, next));
+        openLobbyInfoPanel("guide");
+      });
+    });
+  }
+}
+
+const GUIDE_BOOK_PAGES = [
+  {
+    title: "1. 게임 목표",
+    body: "Breaking Out은 3번의 레이드 동안 파밍, 전투, 생존, 탈출을 반복해 최종 가치를 겨루는 턴제 익스트랙션 보드게임입니다.",
+    points: [
+      "각 레이드는 15페이즈로 진행됩니다.",
+      "탈출에 실패하면 해당 레이드에서 들고 있던 아이템 가치는 잃습니다.",
+      "3번째 레이드가 끝나면 누적 성과와 생존 여부를 바탕으로 최종 결과가 정리됩니다."
+    ]
+  },
+  {
+    title: "2. 로비와 방",
+    body: "방장은 맵과 COM 슬롯을 관리하고, 플레이어는 자기 슬롯의 무장만 설정합니다.",
+    points: [
+      "방장은 Open, Closed, COM 슬롯을 조절할 수 있습니다.",
+      "비방장 플레이어는 READY를 눌러 준비 상태를 표시합니다.",
+      "방장이 선택한 맵 패키지는 게임 시작 전 모든 참가자에게 적용됩니다."
+    ]
+  },
+  {
+    title: "3. 턴과 행동",
+    body: "자기 차례에는 이동, 루팅, 공격 중 가능한 행동을 선택합니다. 스태미나는 행동 자원입니다.",
+    points: [
+      "걷기는 스태미나 1을 사용해 1칸 이동합니다.",
+      "대시는 스태미나 2를 사용해 최대 3칸 이동합니다.",
+      "공격하면 일반적으로 그 턴은 종료됩니다."
+    ]
+  },
+  {
+    title: "4. 전투",
+    body: "사거리, 시야, 엄폐, 무기 주사위 결과가 공격 성공과 피해 부위를 결정합니다.",
+    points: [
+      "머리나 상체 HP가 0이 되면 사망합니다.",
+      "복부나 하체가 0인 상태에서 추가 피해를 받으면 상체 피해로 전환됩니다.",
+      "무기마다 사거리, 주사위 수, 부위별 피해, 패시브가 다릅니다."
+    ]
+  },
+  {
+    title: "5. 루팅과 가방",
+    body: "루팅 타일이나 시체 가방에서 아이템을 얻고, 가방 20칸에 보관합니다.",
+    points: [
+      "일반 루팅은 전 등급 아이템이 낮은 확률로 섞여 나옵니다.",
+      "고급 루팅은 에픽 이상 아이템 중심으로 등장합니다.",
+      "가방이 가득 차면 기존 아이템을 버리고 새 아이템을 넣어야 합니다."
+    ]
+  },
+  {
+    title: "6. 이벤트 카드",
+    body: "이벤트 카드는 레이드 흐름을 흔드는 변수입니다. 즉시 효과, 페이즈 효과, 레이드 보존 효과가 섞여 있습니다.",
+    points: [
+      "일부 이벤트는 피해나 루팅, 스태미나 제한을 즉시 발생시킵니다.",
+      "보존형 이벤트는 이벤트 탭에 남고 필요한 순간 효과를 발동합니다.",
+      "이벤트 카드 확인 후 빨간 점이 뜨면 새 카드나 새 항목이 있다는 뜻입니다."
+    ]
+  },
+  {
+    title: "7. 계정 성장",
+    body: "게임 결과는 계정에 누적됩니다. 밸런스에 영향을 주는 유료성 아이템은 만들지 않는 방향입니다.",
+    points: [
+      "킬과 탈출은 경험치와 RP를 올립니다.",
+      "사망하면 RP가 소폭 감소합니다.",
+      "루팅 가치는 이름표, 말 스킨, 채팅 말풍선, 칭호 같은 외형 보상 구매에 사용합니다."
+    ]
+  }
+];
+
+function renderGuideBook(kills, deaths, extracts) {
+  activeGuidePage = Math.max(0, Math.min(GUIDE_BOOK_PAGES.length - 1, activeGuidePage));
+  const page = GUIDE_BOOK_PAGES[activeGuidePage];
+  return `
+    <div class="guide-book">
+      <div class="guide-book-tabs">
+        ${GUIDE_BOOK_PAGES.map((entry, index) => `
+          <button class="${index === activeGuidePage ? "is-active" : ""}" type="button" data-guide-page="${index}">
+            ${index + 1}
+          </button>
+        `).join("")}
+      </div>
+      <article class="guide-book-page">
+        <span>Guide ${activeGuidePage + 1} / ${GUIDE_BOOK_PAGES.length}</span>
+        <strong>${escapeHtml(page.title)}</strong>
+        <p>${escapeHtml(page.body)}</p>
+        <ul>
+          ${page.points.map((point) => `<li>${escapeHtml(point)}</li>`).join("")}
+        </ul>
+      </article>
+      <div class="guide-book-actions">
+        <button type="button" data-guide-step="-1" ${activeGuidePage <= 0 ? "disabled" : ""}>이전</button>
+        <button type="button" data-guide-step="1" ${activeGuidePage >= GUIDE_BOOK_PAGES.length - 1 ? "disabled" : ""}>다음</button>
+      </div>
+      <p class="lobby-info-footnote">현재 기록: ${formatValue(kills)}킬 / ${formatValue(deaths)}데스 / ${formatValue(extracts)}탈출</p>
+    </div>
   `;
 }
 

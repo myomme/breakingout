@@ -1675,6 +1675,125 @@ button.room-slot-ready {
   font-size: 12px;
 }
 
+.leaderboard-tabs,
+.guide-book-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.leaderboard-tabs button,
+.guide-book-tabs button {
+  min-height: 34px;
+  border: 1px solid rgba(236, 224, 196, 0.14);
+  border-radius: 0;
+  background: rgba(255, 255, 255, 0.045);
+  color: rgba(244, 239, 229, 0.72);
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.leaderboard-tabs button.is-active,
+.guide-book-tabs button.is-active {
+  border-color: rgba(185, 232, 109, 0.46);
+  background: rgba(185, 232, 109, 0.14);
+  color: #efffcf;
+  box-shadow: inset 0 -3px 0 rgba(185, 232, 109, 0.62);
+}
+
+.leaderboard-table {
+  display: grid;
+  gap: 6px;
+}
+
+.leaderboard-head,
+.leaderboard-row {
+  display: grid;
+  grid-template-columns: 42px minmax(120px, 1fr) minmax(86px, 0.7fr) minmax(120px, 0.9fr);
+  gap: 10px;
+  align-items: center;
+}
+
+.leaderboard-head {
+  color: rgba(224, 214, 193, 0.52);
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 0 10px;
+}
+
+.leaderboard-row,
+.leaderboard-empty {
+  border: 1px solid rgba(132, 147, 138, 0.18);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.045);
+  padding: 9px 10px;
+}
+
+.leaderboard-row.is-me {
+  border-color: rgba(185, 232, 109, 0.42);
+  background: rgba(185, 232, 109, 0.1);
+}
+
+.leaderboard-row span {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 999px;
+  background: rgba(185, 232, 109, 0.12);
+  color: #e7f6c4;
+  font-weight: 1000;
+}
+
+.leaderboard-row strong {
+  color: #f8f2e5;
+  font-size: 14px;
+}
+
+.leaderboard-row em {
+  color: #f6d488;
+  font-size: 13px;
+  font-style: normal;
+  font-weight: 1000;
+}
+
+.leaderboard-row small,
+.leaderboard-empty span {
+  color: rgba(224, 214, 193, 0.64);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.leaderboard-empty {
+  display: grid;
+  gap: 3px;
+  text-align: center;
+}
+
+.leaderboard-empty strong {
+  color: #f8f2e5;
+}
+
+.rank-thresholds {
+  border: 1px solid rgba(132, 147, 138, 0.18);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
+  padding: 10px;
+}
+
+.rank-thresholds summary {
+  cursor: pointer;
+  color: rgba(244, 239, 229, 0.82);
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.rank-thresholds .lobby-rank-list {
+  margin-top: 10px;
+}
+
 .lobby-mission-list {
   display: grid;
   gap: 10px;
@@ -1703,6 +1822,80 @@ button.room-slot-ready {
 
 .lobby-mission-card.is-complete {
   border-color: rgba(185, 232, 109, 0.4);
+}
+
+.guide-book {
+  display: grid;
+  gap: 12px;
+}
+
+.guide-book-tabs {
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.guide-book-tabs button {
+  min-width: 0;
+  font-size: 13px;
+}
+
+.guide-book-page {
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(132, 147, 138, 0.18);
+  border-radius: 10px;
+  background:
+    linear-gradient(135deg, rgba(185, 232, 109, 0.08), transparent 42%),
+    rgba(255, 255, 255, 0.045);
+  padding: 16px;
+}
+
+.guide-book-page span {
+  color: rgba(185, 232, 109, 0.72);
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.guide-book-page strong {
+  color: #f8f2e5;
+  font-size: 22px;
+  line-height: 1.1;
+}
+
+.guide-book-page p {
+  margin: 0;
+  color: rgba(239, 234, 221, 0.82);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.guide-book-page ul {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding-left: 18px;
+  color: rgba(224, 214, 193, 0.76);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.guide-book-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.guide-book-actions button {
+  min-height: 38px;
+  border-color: rgba(185, 232, 109, 0.26);
+  background: rgba(185, 232, 109, 0.1);
+  color: #efffcf;
+  font-weight: 950;
+}
+
+.guide-book-actions button:disabled {
+  opacity: 0.4;
 }
 
 .lobby-step.is-active {
@@ -4338,6 +4531,26 @@ dd {
 
   .lobby-info-grid {
     grid-template-columns: 1fr;
+  }
+
+  .leaderboard-tabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .leaderboard-head {
+    display: none;
+  }
+
+  .leaderboard-row {
+    grid-template-columns: 34px 1fr auto;
+  }
+
+  .leaderboard-row small {
+    grid-column: 2 / -1;
+  }
+
+  .guide-book-tabs {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .lobby-rank-list li {

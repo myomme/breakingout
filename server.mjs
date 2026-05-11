@@ -70,6 +70,11 @@ const server = http.createServer(async (request, response) => {
       return;
     }
 
+    if (url.pathname === "/api/leaderboard") {
+      handleLeaderboardRequest(response);
+      return;
+    }
+
     const pathname = decodeURIComponent(url.pathname === "/" ? "/game.html" : url.pathname);
     const filePath = path.normalize(path.join(__dirname, pathname));
 
@@ -239,6 +244,57 @@ function handleAdminAccountsRequest(request, response, url) {
     sessionTtlDays: Math.round(ACCOUNT_SESSION_TTL_MS / (24 * 60 * 60 * 1000)),
     accounts: rows
   }, null, 2));
+}
+
+function handleLeaderboardRequest(response) {
+  const entries = [...accounts.values()]
+    .map((account) => createPublicLeaderboardEntry(normalizeAccount(account, account.accountId, account.nickname)))
+    .filter((entry) => entry.accountId && entry.gamesCompleted > 0);
+  const sorters = {
+    rp: (a, b) => b.rankScore - a.rankScore || b.kills - a.kills || b.lifetimeLootValue - a.lifetimeLootValue,
+    value: (a, b) => b.lifetimeLootValue - a.lifetimeLootValue || b.rankScore - a.rankScore,
+    survival: (a, b) => b.survivalRate - a.survivalRate || b.extracts - a.extracts || b.gamesCompleted - a.gamesCompleted,
+    kd: (a, b) => b.kd - a.kd || b.kills - a.kills || b.rankScore - a.rankScore
+  };
+  const rankings = Object.fromEntries(Object.entries(sorters).map(([key, sorter]) => [
+    key,
+    [...entries].sort(sorter).slice(0, 50).map((entry, index) => ({ ...entry, rank: index + 1 }))
+  ]));
+
+  response.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+  response.end(JSON.stringify({
+    ok: true,
+    generatedAt: Date.now(),
+    count: entries.length,
+    rankings
+  }));
+}
+
+function createPublicLeaderboardEntry(account) {
+  const stats = account.stats ?? {};
+  const wallet = account.wallet ?? {};
+  const gamesCompleted = Math.max(0, Number(stats.gamesCompleted ?? 0));
+  const kills = Math.max(0, Number(stats.kills ?? 0));
+  const deaths = Math.max(0, Number(stats.deaths ?? 0));
+  const extracts = Math.max(0, Number(stats.extracts ?? 0));
+  const rankScore = Math.max(0, Number(stats.rankScore ?? 0));
+  const survivalRate = gamesCompleted > 0 ? extracts / gamesCompleted : 0;
+  const kd = deaths > 0 ? kills / deaths : kills;
+
+  return {
+    accountId: account.accountId,
+    nickname: account.nickname || account.username || "Operator",
+    rankScore,
+    lifetimeLootValue: Math.max(0, Number(wallet.lifetimeLootValue ?? 0)),
+    gamesCompleted,
+    kills,
+    deaths,
+    extracts,
+    survivalRate,
+    kd,
+    bestGameValue: Math.max(0, Number(stats.bestGameValue ?? 0)),
+    updatedAt: account.updatedAt ?? 0
+  };
 }
 
 function sanitizeAccountForAdmin(account) {
