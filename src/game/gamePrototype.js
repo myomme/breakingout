@@ -185,6 +185,7 @@ let accountRegisterOverlay = null;
 let registerAccountIdInput = null;
 let registerPasswordInput = null;
 let registerNicknameInput = null;
+let accountRegisterError = null;
 let accountRegisterSubmit = null;
 let accountRegisterClose = null;
 let beginnerHelpPanel = null;
@@ -216,6 +217,7 @@ let activeLeaderboardCategory = "rp";
 let activeGuidePage = 0;
 let leaderboardCache = null;
 let leaderboardCacheAt = 0;
+let pendingAccountAuthAction = null;
 let lastActivePlayerIndexForUi = null;
 const unreadTabs = new Set();
 const lastBagCountsByPlayer = new Map();
@@ -1933,7 +1935,19 @@ function authenticateAccount(action = "login") {
     return;
   }
 
+  pendingAccountAuthAction = action;
+  clearAccountRegisterError();
   setStartStatus(action === "register" ? "계정 생성을 요청했습니다." : "로그인 중입니다.");
+}
+
+function handleAccountAuthFailure(message) {
+  setStartStatus(message);
+
+  if (pendingAccountAuthAction === "register" || !accountRegisterOverlay?.hidden) {
+    showAccountRegisterError(message);
+  }
+
+  pendingAccountAuthAction = null;
 }
 
 function normalizeAccountUsername(value) {
@@ -1947,6 +1961,8 @@ function completeAccountLogin({ account, sessionToken }) {
     return;
   }
 
+  pendingAccountAuthAction = null;
+  clearAccountRegisterError();
   const previousId = lobbySession.localPlayerId;
   lobbySession.localPlayerId = account.accountId;
   lobbySession.accountId = account.accountId;
@@ -3505,6 +3521,7 @@ function ensureAccountRegisterUi() {
         <span>닉네임</span>
         <input id="registerNicknameInput" type="text" maxlength="18" placeholder="닉네임 입력" autocomplete="off" value="">
       </label>
+      <p id="accountRegisterError" class="account-register-error" role="alert" hidden></p>
       <button id="accountRegisterSubmit" type="button">계정 생성</button>
     </section>
   `;
@@ -3512,6 +3529,7 @@ function ensureAccountRegisterUi() {
   registerAccountIdInput = accountRegisterOverlay.querySelector("#registerAccountIdInput");
   registerPasswordInput = accountRegisterOverlay.querySelector("#registerPasswordInput");
   registerNicknameInput = accountRegisterOverlay.querySelector("#registerNicknameInput");
+  accountRegisterError = accountRegisterOverlay.querySelector("#accountRegisterError");
   accountRegisterSubmit = accountRegisterOverlay.querySelector("#accountRegisterSubmit");
   accountRegisterClose = accountRegisterOverlay.querySelector("#accountRegisterClose");
   accountRegisterSubmit?.addEventListener("click", () => authenticateAccount("register"));
@@ -3526,13 +3544,37 @@ function ensureAccountRegisterUi() {
 
 function openAccountRegisterModal() {
   ensureAccountRegisterUi();
+  clearAccountRegisterError();
   accountRegisterOverlay.hidden = false;
   registerAccountIdInput?.focus();
 }
 
 function closeAccountRegisterModal() {
+  clearAccountRegisterError();
   if (accountRegisterOverlay) {
     accountRegisterOverlay.hidden = true;
+  }
+}
+
+function showAccountRegisterError(message) {
+  ensureAccountRegisterUi();
+  if (!accountRegisterOverlay || !accountRegisterError) {
+    return;
+  }
+
+  accountRegisterOverlay.hidden = false;
+  accountRegisterError.textContent = message;
+  accountRegisterError.hidden = false;
+  if (/이미|존재|duplicate|exists/i.test(message)) {
+    registerAccountIdInput?.focus();
+    registerAccountIdInput?.select?.();
+  }
+}
+
+function clearAccountRegisterError() {
+  if (accountRegisterError) {
+    accountRegisterError.textContent = "";
+    accountRegisterError.hidden = true;
   }
 }
 
@@ -3689,7 +3731,7 @@ function handleServerMessage(message) {
     if (message.ok) {
       completeAccountLogin(message);
     } else {
-      setStartStatus(message.message || "계정 인증에 실패했습니다.");
+      handleAccountAuthFailure(message.message || "계정 인증에 실패했습니다.");
     }
     return;
   }
