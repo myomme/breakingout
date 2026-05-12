@@ -1,0 +1,578 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Breaking Out Token Skins Demo</title>
+  <style>
+    /*
+      Token Skin Demo
+      - Standalone HTML/CSS/JS.
+      - 72px circular game tokens.
+      - Uses data-driven skin definitions below, so the game UI can reuse the same structure.
+      - SVG ids are generated per token instance to avoid collisions when multiple tokens render.
+    */
+
+    :root {
+      color-scheme: dark;
+      --bg: #080b0b;
+      --panel: rgba(17, 22, 21, 0.86);
+      --panel-line: rgba(208, 220, 203, 0.16);
+      --text: #f2f1e8;
+      --muted: rgba(228, 232, 218, 0.62);
+      --owned: #aeea6f;
+      --selected: #dcecc4;
+      --locked: rgba(255, 255, 255, 0.2);
+      --rare: #f0c46b;
+      --size: 72px;
+      font-family: Inter, "Segoe UI", "Noto Sans KR", Arial, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      min-height: 100dvh;
+      margin: 0;
+      background:
+        radial-gradient(circle at 72% 16%, rgba(95, 106, 92, 0.18), transparent 30%),
+        radial-gradient(circle at 22% 86%, rgba(65, 93, 84, 0.14), transparent 28%),
+        linear-gradient(135deg, #050707, #101413 58%, #070909);
+      color: var(--text);
+    }
+
+    .demo-shell {
+      width: min(1120px, calc(100vw - 32px));
+      margin: 0 auto;
+      padding: 34px 0 44px;
+    }
+
+    .demo-header {
+      display: grid;
+      gap: 8px;
+      margin-bottom: 22px;
+      border-bottom: 1px solid var(--panel-line);
+      padding-bottom: 18px;
+    }
+
+    .demo-header span {
+      color: var(--owned);
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+    }
+
+    .demo-header h1 {
+      margin: 0;
+      font-size: clamp(32px, 5vw, 56px);
+      line-height: 0.9;
+      letter-spacing: 0;
+      text-transform: uppercase;
+    }
+
+    .demo-header p {
+      max-width: 760px;
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.55;
+    }
+
+    .skin-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 14px;
+    }
+
+    .skin-card {
+      position: relative;
+      display: grid;
+      grid-template-columns: var(--size) minmax(0, 1fr);
+      align-items: center;
+      gap: 14px;
+      min-height: 116px;
+      overflow: hidden;
+      border: 1px solid var(--panel-line);
+      border-radius: 8px;
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 48%),
+        var(--panel);
+      padding: 16px;
+      box-shadow: 0 18px 34px rgba(0, 0, 0, 0.24);
+    }
+
+    .skin-card::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(90deg, transparent, var(--accent-soft), transparent);
+      opacity: 0;
+      transform: translateX(-40%);
+      pointer-events: none;
+    }
+
+    .skin-card.is-selected {
+      border-color: rgba(220, 236, 196, 0.58);
+      box-shadow:
+        0 0 0 1px rgba(220, 236, 196, 0.12) inset,
+        0 20px 44px rgba(0, 0, 0, 0.3);
+    }
+
+    .skin-card.is-owned .state-owned,
+    .skin-card.is-selected .state-selected,
+    .skin-card.is-disabled .state-disabled,
+    .skin-card.is-locked .state-locked,
+    .skin-card.is-rare .state-rare {
+      display: inline-flex;
+    }
+
+    .skin-card.is-disabled {
+      filter: grayscale(0.65);
+      opacity: 0.52;
+    }
+
+    .skin-card.is-locked .token-wrap {
+      opacity: 0.48;
+    }
+
+    .skin-card.is-rare {
+      border-color: rgba(240, 196, 107, 0.42);
+    }
+
+    .skin-copy {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      gap: 7px;
+      min-width: 0;
+    }
+
+    .skin-copy h2 {
+      margin: 0;
+      overflow: hidden;
+      color: var(--text);
+      font-size: 15px;
+      font-weight: 950;
+      letter-spacing: 0.03em;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .skin-copy p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.42;
+    }
+
+    .state-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+    }
+
+    .state-pill {
+      display: none;
+      align-items: center;
+      min-height: 20px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 999px;
+      padding: 0 7px;
+      color: rgba(245, 246, 238, 0.82);
+      font-size: 9px;
+      font-weight: 900;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .state-selected { border-color: rgba(220, 236, 196, 0.5); color: var(--selected); }
+    .state-owned { border-color: rgba(174, 234, 111, 0.45); color: var(--owned); }
+    .state-disabled { color: rgba(255, 255, 255, 0.52); }
+    .state-locked { color: var(--locked); }
+    .state-rare { border-color: rgba(240, 196, 107, 0.56); color: var(--rare); }
+
+    .token-wrap {
+      position: relative;
+      display: grid;
+      width: var(--size);
+      height: var(--size);
+      place-items: center;
+      border-radius: 50%;
+      isolation: isolate;
+    }
+
+    .token-wrap svg {
+      width: var(--size);
+      height: var(--size);
+      overflow: visible;
+      display: block;
+      filter: drop-shadow(0 12px 14px rgba(0, 0, 0, 0.38));
+    }
+
+    .token-breathe {
+      transform-origin: 36px 36px;
+    }
+
+    .skin-card.is-selected .token-breathe {
+      animation: token-breathe 2.8s ease-in-out infinite;
+    }
+
+    .skin-card.is-selected::before {
+      animation: card-scan 3.8s ease-in-out infinite;
+    }
+
+    @keyframes token-breathe {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.035); }
+    }
+
+    @keyframes card-scan {
+      0%, 100% { opacity: 0; transform: translateX(-45%); }
+      50% { opacity: 0.22; transform: translateX(45%); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
+        scroll-behavior: auto !important;
+      }
+    }
+
+    @media (max-width: 560px) {
+      .demo-shell {
+        width: min(100vw - 20px, 420px);
+        padding-top: 22px;
+      }
+
+      .skin-card {
+        grid-template-columns: 64px minmax(0, 1fr);
+        --size: 64px;
+        padding: 14px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="demo-shell">
+    <header class="demo-header">
+      <span>Breaking Out / Token Skin Preview</span>
+      <h1>Operator Tokens</h1>
+      <p>72px 원형 플레이어 말 스킨 데모. 각 스킨은 동일한 원형 규격을 유지하면서 링 구조, 표면 질감, 마킹 포인트를 다르게 설계했다.</p>
+    </header>
+
+    <section id="skinGrid" class="skin-grid" aria-label="토큰 스킨 미리보기"></section>
+  </main>
+
+  <script>
+    /*
+      Data-driven skin catalog.
+      In game UI, this array can become the source for shop/customize rendering.
+      states examples: selected / disabled / owned / locked / rare
+    */
+    const TOKEN_SKINS = [
+      {
+        id: "standard_issue",
+        name: "Standard Issue",
+        desc: "기본 지급 장비. 무광 폴리머 쉘과 흰 식별 링.",
+        accent: "#e7eee0",
+        soft: "rgba(231, 238, 224, 0.14)",
+        states: ["owned"],
+        variant: "standard"
+      },
+      {
+        id: "recon",
+        name: "Recon",
+        desc: "정찰 UI 감성. 얇은 거리계 링과 관측 점 마킹.",
+        accent: "#9dc6a6",
+        soft: "rgba(157, 198, 166, 0.15)",
+        states: ["selected", "owned"],
+        variant: "recon"
+      },
+      {
+        id: "thermal",
+        name: "Thermal",
+        desc: "열화상 식별 패널. 절제된 온도 밴드와 센서 코어.",
+        accent: "#f0a35c",
+        soft: "rgba(240, 163, 92, 0.15)",
+        states: ["rare", "owned"],
+        variant: "thermal"
+      },
+      {
+        id: "hazmat",
+        name: "Hazmat",
+        desc: "오염 경고 장비. 경고색 분할 링과 방호 씰.",
+        accent: "#d4c45b",
+        soft: "rgba(212, 196, 91, 0.16)",
+        states: ["locked"],
+        variant: "hazmat"
+      },
+      {
+        id: "jammer",
+        name: "Jammer",
+        desc: "전파 교란 모듈. 노이즈 스트립과 비대칭 송신 링.",
+        accent: "#78a9b7",
+        soft: "rgba(120, 169, 183, 0.15)",
+        states: ["disabled"],
+        variant: "jammer"
+      },
+      {
+        id: "black_cell",
+        name: "Black Cell",
+        desc: "비인가 특수 장비. 흑색 세라믹과 낮은 반사율.",
+        accent: "#7f8790",
+        soft: "rgba(127, 135, 144, 0.15)",
+        states: ["rare", "locked"],
+        variant: "blackCell"
+      },
+      {
+        id: "contraband",
+        name: "Contraband",
+        desc: "블랙마켓 장비. 봉인 테이프와 긁힌 금속 질감.",
+        accent: "#b9854b",
+        soft: "rgba(185, 133, 75, 0.16)",
+        states: ["owned"],
+        variant: "contraband"
+      },
+      {
+        id: "extraction_mark",
+        name: "Extraction Mark",
+        desc: "탈출 마커. 구조 신호와 집결 지점 식별 문양.",
+        accent: "#b8f36e",
+        soft: "rgba(184, 243, 110, 0.18)",
+        states: ["selected", "rare"],
+        variant: "extract"
+      }
+    ];
+
+    const grid = document.querySelector("#skinGrid");
+
+    function renderSkinGrid() {
+      grid.innerHTML = TOKEN_SKINS.map((skin, index) => renderSkinCard(skin, index)).join("");
+    }
+
+    function renderSkinCard(skin, index) {
+      const stateClasses = skin.states.map((state) => `is-${state}`).join(" ");
+      const uid = `bo-token-${skin.id}-${index}`;
+
+      return `
+        <article class="skin-card ${stateClasses}" style="--accent-soft:${skin.soft}">
+          <div class="token-wrap" aria-hidden="true">
+            ${renderTokenSvg(skin, uid)}
+          </div>
+          <div class="skin-copy">
+            <h2>${escapeHtml(skin.name)}</h2>
+            <p>${escapeHtml(skin.desc)}</p>
+            <div class="state-row" aria-label="상태 예시">
+              <span class="state-pill state-selected">selected</span>
+              <span class="state-pill state-owned">owned</span>
+              <span class="state-pill state-disabled">disabled</span>
+              <span class="state-pill state-locked">locked</span>
+              <span class="state-pill state-rare">rare</span>
+            </div>
+          </div>
+        </article>
+      `;
+    }
+
+    function renderTokenSvg(skin, uid) {
+      const variant = TOKEN_VARIANTS[skin.variant] ?? TOKEN_VARIANTS.standard;
+
+      return `
+        <svg viewBox="0 0 72 72" role="img" aria-label="${escapeHtml(skin.name)} token">
+          <defs>
+            <radialGradient id="${uid}-shell" cx="38%" cy="28%" r="72%">
+              <stop offset="0%" stop-color="${variant.top}"/>
+              <stop offset="58%" stop-color="${variant.mid}"/>
+              <stop offset="100%" stop-color="${variant.low}"/>
+            </radialGradient>
+            <linearGradient id="${uid}-slash" x1="12" y1="12" x2="60" y2="60">
+              <stop offset="0%" stop-color="${skin.accent}" stop-opacity="0.9"/>
+              <stop offset="100%" stop-color="#ffffff" stop-opacity="0.08"/>
+            </linearGradient>
+            <pattern id="${uid}-texture" width="8" height="8" patternUnits="userSpaceOnUse">
+              ${variant.pattern}
+            </pattern>
+            <clipPath id="${uid}-clip">
+              <circle cx="36" cy="36" r="31"/>
+            </clipPath>
+          </defs>
+
+          <g class="token-breathe">
+            <circle cx="36" cy="36" r="34" fill="#050707"/>
+            <circle cx="36" cy="36" r="32" fill="url(#${uid}-shell)" stroke="rgba(255,255,255,0.18)" stroke-width="1.2"/>
+            <circle cx="36" cy="36" r="31" fill="url(#${uid}-texture)" opacity="${variant.textureOpacity}"/>
+            <g clip-path="url(#${uid}-clip)">
+              ${variant.body(uid, skin)}
+            </g>
+            ${variant.ring(uid, skin)}
+            <circle cx="36" cy="36" r="13.5" fill="rgba(5,8,8,0.74)" stroke="${skin.accent}" stroke-opacity="0.72" stroke-width="1.4"/>
+            <text x="36" y="40.8" text-anchor="middle" fill="#f7f8ee" font-size="13" font-weight="900" font-family="Arial, sans-serif">1</text>
+          </g>
+        </svg>
+      `;
+    }
+
+    /*
+      Variant builders keep tokens visually distinct without changing the 72px contract.
+      Avoid heavy SVG filters for performance; gradients, simple paths, and patterns are cheap.
+    */
+    const TOKEN_VARIANTS = {
+      standard: {
+        top: "#5b655d",
+        mid: "#2e3732",
+        low: "#121817",
+        textureOpacity: 0.22,
+        pattern: `<path d="M0 7 L8 1" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>`,
+        body: (uid, skin) => `
+          <path d="M18 48 L54 24 L58 30 L22 54 Z" fill="url(#${uid}-slash)" opacity="0.34"/>
+          <path d="M18 22 H54" stroke="rgba(255,255,255,0.18)" stroke-width="2"/>
+          <path d="M22 50 H50" stroke="${skin.accent}" stroke-opacity="0.52" stroke-width="2"/>
+        `,
+        ring: (uid, skin) => `
+          <circle cx="36" cy="36" r="27" fill="none" stroke="${skin.accent}" stroke-opacity="0.42" stroke-width="2"/>
+          <path d="M36 7 V14 M36 58 V65 M7 36 H14 M58 36 H65" stroke="rgba(255,255,255,0.48)" stroke-width="2" stroke-linecap="round"/>
+        `
+      },
+      recon: {
+        top: "#405144",
+        mid: "#203129",
+        low: "#0d1412",
+        textureOpacity: 0.28,
+        pattern: `<circle cx="2" cy="2" r="0.8" fill="rgba(188,232,190,0.18)"/>`,
+        body: (uid, skin) => `
+          <circle cx="36" cy="36" r="22" fill="none" stroke="${skin.accent}" stroke-opacity="0.28" stroke-dasharray="4 4"/>
+          <path d="M20 36 H29 M43 36 H52 M36 20 V29 M36 43 V52" stroke="${skin.accent}" stroke-width="1.6" stroke-linecap="round"/>
+          <circle cx="52" cy="22" r="3" fill="${skin.accent}" opacity="0.72"/>
+        `,
+        ring: (uid, skin) => `
+          <circle cx="36" cy="36" r="29" fill="none" stroke="rgba(255,255,255,0.22)" stroke-width="1"/>
+          <circle cx="36" cy="36" r="25" fill="none" stroke="${skin.accent}" stroke-opacity="0.44" stroke-width="1.5" stroke-dasharray="12 5"/>
+        `
+      },
+      thermal: {
+        top: "#5b4132",
+        mid: "#281e1a",
+        low: "#100d0c",
+        textureOpacity: 0.18,
+        pattern: `<rect x="0" y="0" width="8" height="2" fill="rgba(240,163,92,0.13)"/>`,
+        body: (uid, skin) => `
+          <path d="M12 50 C24 42 25 30 38 27 C49 24 55 17 62 12 V58 H12 Z" fill="${skin.accent}" opacity="0.16"/>
+          <path d="M15 46 H57 M18 39 H54 M21 32 H51 M24 25 H48" stroke="rgba(255,255,255,0.12)" stroke-width="1.4"/>
+          <circle cx="48" cy="24" r="5" fill="${skin.accent}" opacity="0.5"/>
+        `,
+        ring: (uid, skin) => `
+          <path d="M9 36 A27 27 0 0 1 36 9" fill="none" stroke="${skin.accent}" stroke-width="3" stroke-linecap="round"/>
+          <path d="M63 36 A27 27 0 0 1 36 63" fill="none" stroke="#9c2f26" stroke-width="3" stroke-linecap="round"/>
+        `
+      },
+      hazmat: {
+        top: "#565238",
+        mid: "#2c2b1d",
+        low: "#12120c",
+        textureOpacity: 0.24,
+        pattern: `<path d="M0 0 L8 8 M8 0 L0 8" stroke="rgba(212,196,91,0.1)" stroke-width="1"/>`,
+        body: (uid, skin) => `
+          <path d="M36 13 L57 50 H15 Z" fill="${skin.accent}" opacity="0.15" stroke="${skin.accent}" stroke-opacity="0.44" stroke-width="1.5"/>
+          <circle cx="36" cy="38" r="9" fill="rgba(0,0,0,0.36)" stroke="${skin.accent}" stroke-opacity="0.55"/>
+          <path d="M36 29 V47 M27 43 L45 33 M27 33 L45 43" stroke="${skin.accent}" stroke-width="1.2"/>
+        `,
+        ring: (uid, skin) => `
+          <circle cx="36" cy="36" r="28" fill="none" stroke="${skin.accent}" stroke-width="4" stroke-dasharray="9 6" opacity="0.72"/>
+        `
+      },
+      jammer: {
+        top: "#334b52",
+        mid: "#1b282c",
+        low: "#0b1113",
+        textureOpacity: 0.3,
+        pattern: `<path d="M0 4 H8" stroke="rgba(120,169,183,0.2)" stroke-width="1"/><path d="M4 0 V8" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>`,
+        body: (uid, skin) => `
+          <path d="M18 30 H54 M16 38 H48 M24 46 H57" stroke="${skin.accent}" stroke-opacity="0.62" stroke-width="2" stroke-linecap="round"/>
+          <path d="M27 20 C40 27 42 45 55 52" fill="none" stroke="rgba(255,255,255,0.18)" stroke-width="2"/>
+          <rect x="18" y="18" width="10" height="9" rx="2" fill="${skin.accent}" opacity="0.5"/>
+        `,
+        ring: (uid, skin) => `
+          <path d="M12 23 A28 28 0 0 1 60 23" fill="none" stroke="${skin.accent}" stroke-width="2" stroke-dasharray="3 5"/>
+          <path d="M10 49 A30 30 0 0 0 62 49" fill="none" stroke="rgba(255,255,255,0.2)" stroke-width="2"/>
+        `
+      },
+      blackCell: {
+        top: "#282c31",
+        mid: "#111417",
+        low: "#040505",
+        textureOpacity: 0.34,
+        pattern: `<rect x="0" y="0" width="4" height="4" fill="rgba(255,255,255,0.04)"/><rect x="4" y="4" width="4" height="4" fill="rgba(255,255,255,0.035)"/>`,
+        body: (uid, skin) => `
+          <path d="M16 20 L56 16 L52 56 L20 52 Z" fill="rgba(255,255,255,0.035)" stroke="${skin.accent}" stroke-opacity="0.26"/>
+          <path d="M23 26 H49 V46 H23 Z" fill="rgba(0,0,0,0.28)" stroke="rgba(255,255,255,0.12)"/>
+          <path d="M23 46 L49 26" stroke="${skin.accent}" stroke-opacity="0.35" stroke-width="2"/>
+        `,
+        ring: (uid, skin) => `
+          <circle cx="36" cy="36" r="28" fill="none" stroke="rgba(255,255,255,0.14)" stroke-width="1"/>
+          <path d="M18 12 A29 29 0 0 1 54 12 M18 60 A29 29 0 0 0 54 60" fill="none" stroke="${skin.accent}" stroke-width="2"/>
+        `
+      },
+      contraband: {
+        top: "#4f3929",
+        mid: "#251a14",
+        low: "#100b09",
+        textureOpacity: 0.32,
+        pattern: `<path d="M-2 7 L7 -2 M2 10 L10 2" stroke="rgba(185,133,75,0.18)" stroke-width="1.2"/>`,
+        body: (uid, skin) => `
+          <path d="M13 44 L59 22 L61 29 L15 51 Z" fill="${skin.accent}" opacity="0.26"/>
+          <path d="M17 47 L57 28" stroke="rgba(0,0,0,0.36)" stroke-width="2"/>
+          <path d="M23 19 H49" stroke="rgba(255,255,255,0.14)" stroke-width="2"/>
+          <path d="M25 56 H47" stroke="${skin.accent}" stroke-width="2" stroke-dasharray="3 3"/>
+        `,
+        ring: (uid, skin) => `
+          <circle cx="36" cy="36" r="27" fill="none" stroke="${skin.accent}" stroke-opacity="0.48" stroke-width="3" stroke-dasharray="18 8"/>
+          <path d="M12 36 H20 M52 36 H60" stroke="rgba(255,255,255,0.34)" stroke-width="2"/>
+        `
+      },
+      extract: {
+        top: "#4c6840",
+        mid: "#243522",
+        low: "#0d130d",
+        textureOpacity: 0.24,
+        pattern: `<path d="M4 0 V8 M0 4 H8" stroke="rgba(184,243,110,0.12)" stroke-width="1"/>`,
+        body: (uid, skin) => `
+          <path d="M36 13 L55 31 L48 31 L48 52 H24 V31 H17 Z" fill="${skin.accent}" opacity="0.16" stroke="${skin.accent}" stroke-opacity="0.48" stroke-width="1.4"/>
+          <path d="M28 45 H44 M32 38 H40" stroke="${skin.accent}" stroke-width="2" stroke-linecap="round"/>
+          <circle cx="36" cy="25" r="3.5" fill="${skin.accent}" opacity="0.82"/>
+        `,
+        ring: (uid, skin) => `
+          <circle cx="36" cy="36" r="29" fill="none" stroke="${skin.accent}" stroke-width="2" stroke-dasharray="6 4"/>
+          <path d="M36 5 L41 12 H31 Z M36 67 L31 60 H41 Z" fill="${skin.accent}" opacity="0.68"/>
+        `
+      }
+    };
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+    }
+
+    renderSkinGrid();
+
+    /*
+      How to add a new skin:
+      1. Add an object to TOKEN_SKINS:
+         { id, name, desc, accent, soft, states, variant }
+      2. Reuse an existing variant for fast production, or add a new TOKEN_VARIANTS entry.
+      3. Keep the SVG viewBox at 72x72 and avoid duplicate hard-coded ids.
+         The renderTokenSvg() uid parameter already namespaces gradients/patterns/clipPaths.
+      4. Prefer simple paths, rings, gradients, and patterns over heavy filters for game UI performance.
+    */
+  </script>
+</body>
+</html>

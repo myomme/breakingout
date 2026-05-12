@@ -14,6 +14,7 @@ const snapshots = new Map();
 const chatMessagesByRoom = new Map();
 const LOBBY_CHAT_ROOM_ID = "global_lobby";
 const ROOM_TTL_MS = 12 * 60 * 60 * 1000;
+const ROOM_PRESENCE_TTL_MS = 2 * 60 * 1000;
 const MAX_CHAT_MESSAGES = 80;
 const ACCOUNT_DB_PATH = process.env.ACCOUNT_DB_PATH
   ? path.resolve(process.env.ACCOUNT_DB_PATH)
@@ -1467,7 +1468,9 @@ function pruneRooms() {
   rooms = rooms.filter((room) => {
     if (!room?.id || room.status === "finished") return false;
     const createdAt = room.createdAt ?? now;
-    return now - createdAt < ROOM_TTL_MS;
+    const playerSlots = normalizeServerSlots(room.slots).filter((slot) => slot.type === "player");
+    const hasRecentPlayer = playerSlots.some((slot) => now - (slot.lastSeen ?? room.updatedAt ?? createdAt) <= ROOM_PRESENCE_TTL_MS);
+    return playerSlots.length > 0 && hasRecentPlayer && now - createdAt < ROOM_TTL_MS;
   });
 
   const roomIds = new Set(rooms.map((room) => room.id));

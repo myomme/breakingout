@@ -1079,6 +1079,28 @@ body {
   display: none;
 }
 
+.floating-end-turn {
+  position: fixed;
+  right: max(16px, env(safe-area-inset-right));
+  bottom: max(174px, calc(env(safe-area-inset-bottom) + 168px));
+  z-index: 25;
+  min-width: 92px;
+  min-height: 42px;
+  border: 1px solid rgba(185, 232, 109, 0.36);
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(27, 38, 31, 0.94), rgba(9, 14, 13, 0.94));
+  color: #eaf8d2;
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(8px);
+  font-size: 13px;
+  font-weight: 950;
+  pointer-events: auto;
+}
+
+.floating-end-turn:disabled {
+  opacity: 0.42;
+}
+
 .room-list,
 .room-slot-list {
   display: grid;

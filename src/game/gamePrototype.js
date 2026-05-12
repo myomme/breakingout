@@ -121,6 +121,7 @@ let gameChatMessages = document.querySelector("#gameChatMessages");
 let gameChatForm = document.querySelector("#gameChatForm");
 let gameChatInput = document.querySelector("#gameChatInput");
 let mobileViewResetButton = null;
+let floatingEndTurnButton = null;
 let chatDisabled = false;
 
 let state;
@@ -1718,6 +1719,7 @@ async function bootstrap() {
   initTopDrawerUi();
   ensureBeginnerHelpUi();
   ensureMobileViewResetUi();
+  ensureFloatingEndTurnUi();
   updateUi();
   renderer.render();
   gameBootstrapped = true;
@@ -2680,6 +2682,17 @@ function renderLobbyEventPanel(account = readAccountRecord()) {
 
 function renderAccountSummary() {
   const strip = document.querySelector(".lobby-player-strip");
+  const accountCard = document.querySelector("#lobbyAccountCard");
+  if (!lobbySession.accountId) {
+    strip?.querySelector(".account-summary-chip")?.remove();
+    if (accountCard) {
+      accountCard.hidden = true;
+      accountCard.innerHTML = "";
+    }
+    document.querySelectorAll(".account-profile-card").forEach((card) => card.remove());
+    return;
+  }
+
   if (!strip || !lobbySession.localPlayerId) {
     return;
   }
@@ -2692,8 +2705,8 @@ function renderAccountSummary() {
   }
 
   const account = readAccountRecord();
-  const accountCard = document.querySelector("#lobbyAccountCard");
   if (accountCard) {
+    accountCard.hidden = false;
     renderLobbyAccountCard(accountCard, account);
   }
 
@@ -3244,6 +3257,14 @@ function rememberCurrentRoom(roomId) {
     sessionStorage.setItem(SESSION_ROOM_ID_KEY, roomId);
   } catch {
     // Ignore storage failures in local prototype mode.
+  }
+}
+
+function getRememberedRoomId() {
+  try {
+    return sessionStorage.getItem(SESSION_ROOM_ID_KEY) || "";
+  } catch {
+    return "";
   }
 }
 
@@ -3938,7 +3959,14 @@ function initServerSync() {
 }
 
 function handleServerMessage(message) {
-  if (!message || message.sourceId === lobbySession.localPlayerId) {
+  if (!message) {
+    return;
+  }
+
+  const isOwnServerEcho = message.sourceId === lobbySession.localPlayerId;
+  const isRequestedOwnSnapshot = message.type === "gameSnapshot"
+    && message.roomId === pendingServerSnapshotRoomId;
+  if (isOwnServerEcho && !isRequestedOwnSnapshot) {
     return;
   }
 
@@ -4330,12 +4358,31 @@ function broadcastRoomStoreChanged(reason = "roomUpdate", rooms = getStoredRooms
 
 function handleRoomStoreChanged(reason = "sync", syncedRooms = null) {
   if (Array.isArray(syncedRooms)) {
-    roomStoreCache = mergeRoomLists(syncedRooms, roomStoreCache);
+    roomStoreCache = syncedRooms
+      .filter((room) => !shouldRemoveStoredRoom(room, Date.now()))
+      .map((room) => {
+        const existing = roomStoreCache.find((entry) => entry.id === room.id);
+        const localRoom = lobbySession.currentRoom?.id === room.id ? lobbySession.currentRoom : existing;
+        return mergeRoomPreservingMapPackage(localRoom, room);
+      });
+    writeJsonStorage(ROOM_STORAGE_KEY, roomStoreCache);
   }
 
   const previousRoomId = lobbySession.currentRoom?.id ?? null;
   const rooms = syncedRooms ?? getStoredRooms();
   let activeRoom = previousRoomId ? rooms.find((room) => room.id === previousRoomId) ?? null : null;
+
+  if (!activeRoom && lobbySession.accountId) {
+    const rememberedRoomId = getRememberedRoomId();
+    const rememberedRoom = rememberedRoomId ? rooms.find((room) => room.id === rememberedRoomId) : null;
+    const rememberedSlot = rememberedRoom
+      ? getRoomSlots(rememberedRoom).find((entry) => entry.type === "player" && entry.playerId === lobbySession.localPlayerId)
+      : null;
+    if (rememberedRoom && rememberedSlot) {
+      activeRoom = rememberedRoom;
+      rememberCurrentRoom(rememberedRoom.id);
+    }
+  }
 
   if (previousRoomId && !activeRoom) {
     lobbySession.currentRoom = null;
@@ -4396,6 +4443,7 @@ async function handleRemoteGameStart(room) {
 
   const savedSnapshot = readJsonStorage(`${GAME_STATE_STORAGE_PREFIX}${room.id}`, null);
   if (savedSnapshot) {
+    pendingServerSnapshotRoomId = room.id;
     handleRemoteGameSnapshot(savedSnapshot);
   } else if (!requestServerGameSnapshot(room.id)) {
     setStartStatus("서버 스냅샷을 기다리는 중입니다.");
@@ -4434,7 +4482,13 @@ function handleSnapshotRequest(message) {
 }
 
 function handleRemoteGameSnapshot(payload) {
-  if (!payload || payload.sourceId === lobbySession.localPlayerId || payload.roomId !== lobbySession.currentRoom?.id) {
+  if (!payload || payload.roomId !== lobbySession.currentRoom?.id) {
+    return;
+  }
+
+  const restoringOwnSnapshot = payload.sourceId === lobbySession.localPlayerId
+    && pendingServerSnapshotRoomId === payload.roomId;
+  if (payload.sourceId === lobbySession.localPlayerId && !restoringOwnSnapshot) {
     return;
   }
 
@@ -4442,7 +4496,7 @@ function handleRemoteGameSnapshot(payload) {
     pendingServerSnapshotRoomId = null;
   }
 
-  if (isLocalHost()) {
+  if (isLocalHost() && !restoringOwnSnapshot) {
     return;
   }
 
@@ -4462,6 +4516,13 @@ function handleRemoteGameSnapshot(payload) {
   }
 
   if (["corpseLootOpen", "corpseLootUpdate"].includes(payload.reason) && payload.version <= lastSnapshotVersion) {
+    if (payload.snapshot) {
+      applyingRemoteSnapshot = true;
+      state.importSnapshot(payload.snapshot);
+      updateUi({ skipSnapshotBroadcast: true });
+      renderer.render();
+      applyingRemoteSnapshot = false;
+    }
     handleRemoteCorpseLootMeta(payload.meta);
     return;
   }
@@ -4546,6 +4607,10 @@ function handleRemoteRevealSnapshot(payload) {
     updateUi({ skipSnapshotBroadcast: true });
     renderer.render();
     applyingRemoteSnapshot = false;
+    const draws = state.consumeEventDraws?.() ?? [];
+    if (draws.length > 0) {
+      void playEventReveal(draws);
+    }
   }
 }
 
@@ -4870,13 +4935,7 @@ function bindEvents() {
     }
   });
 
-  endTurn.addEventListener("click", () => {
-    if (sendPlayerCommand({ type: "endTurn" })) {
-      return;
-    }
-
-    endLocalTurn();
-  });
+  endTurn.addEventListener("click", requestEndTurn);
 
   nextRaid.addEventListener("click", async () => {
     stopRaidAutoAdvance();
@@ -5365,6 +5424,22 @@ function resetMobileGameView() {
   if (actionLog) {
     actionLog.textContent = "맵 화면을 기본 위치로 되돌렸습니다.";
   }
+}
+
+function ensureFloatingEndTurnUi() {
+  const boardPanel = document.querySelector(".game-board-panel");
+  if (!boardPanel || document.querySelector("#floatingEndTurnButton")) {
+    floatingEndTurnButton = document.querySelector("#floatingEndTurnButton");
+    return;
+  }
+
+  floatingEndTurnButton = document.createElement("button");
+  floatingEndTurnButton.id = "floatingEndTurnButton";
+  floatingEndTurnButton.className = "floating-end-turn";
+  floatingEndTurnButton.type = "button";
+  floatingEndTurnButton.textContent = "턴 종료";
+  floatingEndTurnButton.addEventListener("click", requestEndTurn);
+  boardPanel.append(floatingEndTurnButton);
 }
 
 function ensureSessionChatUi() {
@@ -6567,6 +6642,11 @@ function sendCosmeticAction(action, itemId) {
 }
 
 function sendDebugGrantValue(amount = 500) {
+  if (!lobbySession.accountId) {
+    setStartStatus("로그인 후 디버그 가치를 지급할 수 있습니다.");
+    return;
+  }
+
   const ok = sendServerMessage({
     type: "accountAction",
     action: "debugGrantValue",
@@ -6960,6 +7040,18 @@ function endLocalTurn() {
   renderer.render();
   updateUi();
   queueAiTurn();
+}
+
+function requestEndTurn() {
+  if (!state || state.raidEnded || isInteractionLocked() || hasBlockingPlayerDiscard()) {
+    return;
+  }
+
+  if (sendPlayerCommand({ type: "endTurn" })) {
+    return;
+  }
+
+  endLocalTurn();
 }
 
 async function runLootAction({ fromRemote = false } = {}) {
@@ -8680,6 +8772,10 @@ function updateUi({ skipSnapshotBroadcast = false } = {}) {
   lootAction.disabled = !state.canLoot() || controlsLocked;
   attackAction.disabled = !state.canAttackSelectedTile() || controlsLocked;
   endTurn.disabled = state.raidEnded || controlsLocked || hasBlockingPlayerDiscard();
+  if (floatingEndTurnButton) {
+    floatingEndTurnButton.hidden = !gameStarted || state.raidEnded || !canLocalControlActivePlayer() || state.player?.isAi;
+    floatingEndTurnButton.disabled = state.raidEnded || controlsLocked || hasBlockingPlayerDiscard();
+  }
   nextRaid.disabled = !state.raidEnded || state.raid >= 3 || controlsLocked;
   weaponSelect.disabled = controlsLocked || gameStarted;
   armorSelect.disabled = controlsLocked || gameStarted;
