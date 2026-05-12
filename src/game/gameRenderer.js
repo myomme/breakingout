@@ -247,10 +247,16 @@ export class GameRenderer {
     const rect = this.canvas.getBoundingClientRect();
     const zoomX = rect.width / Math.max(1, bounds.width);
     const zoomY = rect.height / Math.max(1, bounds.height);
+    const fitZoom = Math.min(zoomX, zoomY) * 0.84;
+    const gameplayZoom = this.getDefaultGameplayZoom();
 
-    this.camera.zoom = clamp(Math.min(zoomX, zoomY) * 0.84, 0.18, 2.5);
+    this.camera.zoom = clamp(Math.max(fitZoom, gameplayZoom), 0.18, 2.5);
     this.camera.x = rect.width / 2 - (bounds.minX + bounds.width / 2) * this.camera.zoom;
     this.camera.y = rect.height / 2 - (bounds.minY + bounds.height / 2) * this.camera.zoom;
+  }
+
+  getDefaultGameplayZoom() {
+    return this.isMobileViewport ? 0.68 : 0.9;
   }
 
   render() {
@@ -681,26 +687,28 @@ export class GameRenderer {
         this.ctx.stroke();
       }
 
-      if (this.camera.zoom > 0.5) {
+      if (this.state.gameMap.hexSize * this.camera.zoom > 22) {
         this.ctx.fillStyle = "#ffffff";
-        this.ctx.font = "700 8px Inter, system-ui, sans-serif";
+        this.ctx.font = `${Math.max(9, Math.min(16, tokenRadius * 0.52))}px Inter, system-ui, sans-serif`;
         this.ctx.textAlign = "center";
         this.ctx.textBaseline = "middle";
-        this.ctx.fillText(String(index + 1), center.x, center.y + 0.5);
+        this.ctx.fillText(String(index + 1), center.x, center.y + tokenRadius * 0.08);
       }
     });
   }
 
   getPlayerTokenRadius(active) {
-    const base = active ? 11.5 : 9.5;
-    if (this.camera.zoom < 0.42) return Math.max(7, base - 2);
-    if (this.camera.zoom > 1.25) return base + 1.5;
-    return base;
+    const tileRadius = this.state.gameMap.hexSize * this.camera.zoom;
+    const ratio = active ? 0.82 : 0.68;
+    const maxRadius = active ? 36 : 31;
+    const minRadius = active ? 18 : 14;
+    return clamp(tileRadius * ratio, minRadius, maxRadius);
   }
 
   getTokenDetailLevel() {
-    if (this.camera.zoom < 0.45) return 0;
-    if (this.camera.zoom < 0.85) return 1;
+    const tileRadius = this.state.gameMap.hexSize * this.camera.zoom;
+    if (tileRadius < 24) return 0;
+    if (tileRadius < 36) return 1;
     return 2;
   }
 

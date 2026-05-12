@@ -1148,6 +1148,35 @@ function leaveServerRoom(payload, playerId) {
   const room = findRoom(payload.roomId);
   if (!room) return { ok: true, room: null, message: "Already left" };
 
+  if (room.status === "inProgress") {
+    room.slots = normalizeServerSlots(room.slots).map((slot) => (
+      slot.type === "player" && slot.playerId === playerId
+        ? {
+            type: "computer",
+            weaponId: slot.weaponId ?? "AR",
+            armorId: slot.armorId ?? "lightSet",
+            takeoverFromPlayerId: slot.playerId,
+            takeoverName: slot.nickname,
+            takeoverAt: Date.now()
+          }
+        : slot
+    ));
+    syncServerPlayersFromSlots(room);
+    const humans = normalizeServerSlots(room.slots).filter((slot) => slot.type === "player");
+    if (!humans.length) {
+      rooms = rooms.filter((entry) => entry.id !== room.id);
+      snapshots.delete(room.id);
+      chatMessagesByRoom.delete(room.id);
+      return { ok: true, room: null, message: "Room removed" };
+    }
+    if (room.hostId === playerId) {
+      room.hostId = humans[0].playerId;
+    }
+    room.updatedAt = Date.now();
+    syncServerPlayersFromSlots(room);
+    return { ok: true, room, message: "Player replaced by COM" };
+  }
+
   room.slots = normalizeServerSlots(room.slots).map((slot) => (
     slot.type === "player" && slot.playerId === playerId
       ? { type: "open", weaponId: slot.weaponId ?? "AR", armorId: slot.armorId ?? "lightSet" }

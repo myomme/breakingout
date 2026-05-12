@@ -122,7 +122,7 @@ let gameChatForm = document.querySelector("#gameChatForm");
 let gameChatInput = document.querySelector("#gameChatInput");
 let mobileViewResetButton = null;
 let floatingEndTurnButton = null;
-let floatingEventDebugButton = null;
+let floatingLeaveGameButton = null;
 let chatDisabled = false;
 
 let state;
@@ -243,6 +243,7 @@ const PLAYER_COMMAND_STORAGE_PREFIX = "breakingOutPrototypePlayerCommand:";
 const BEGINNER_HELP_STORAGE_KEY = "breakingOutPrototypeBeginnerHelp";
 const DEFAULT_MAP_PATH = "./data/maps/map_Farm.json";
 const DEFAULT_MAP_NAME = "Farm Raid Map";
+const GAMEPLAY_HEX_SIZE = 42;
 const RANK_TIERS = [
   { label: "루키", badge: "R", min: 0 },
   { label: "뱅가드", badge: "V", min: 100 },
@@ -1799,7 +1800,7 @@ async function bootstrap() {
   ensureBeginnerHelpUi();
   ensureMobileViewResetUi();
   ensureFloatingEndTurnUi();
-  ensureFloatingEventDebugUi();
+  ensureFloatingLeaveGameUi();
   updateUi();
   renderer.render();
   gameBootstrapped = true;
@@ -1810,7 +1811,7 @@ async function bootstrap() {
 
 function createRaidState(mapData) {
   return new RaidGameState({
-    mapData,
+    mapData: createGameplayScaleMapData(mapData),
     playerTemplate,
     lootTables,
     weapons,
@@ -1820,6 +1821,22 @@ function createRaidState(mapData) {
     aiCount: Math.max(0, getConfiguredPlayerLoadouts().length - 1),
     playerLoadouts: getConfiguredPlayerLoadouts()
   });
+}
+
+function createGameplayScaleMapData(mapData) {
+  const source = cloneData(mapData);
+  const originalHexSize = Number(source.hexSize ?? GAMEPLAY_HEX_SIZE);
+  const targetHexSize = Math.max(GAMEPLAY_HEX_SIZE, originalHexSize);
+  const scale = targetHexSize / Math.max(1, originalHexSize);
+
+  source.gameplaySourceHexSize = originalHexSize;
+  source.hexSize = targetHexSize;
+  source.originX = Number(source.originX ?? 0) * scale;
+  source.originY = Number(source.originY ?? 0) * scale;
+  source.backgroundX = Number(source.backgroundX ?? 0) * scale;
+  source.backgroundY = Number(source.backgroundY ?? 0) * scale;
+  source.backgroundScale = Number(source.backgroundScale ?? 1) * scale;
+  return source;
 }
 
 function getConfiguredAiCount() {
@@ -4206,15 +4223,17 @@ function handleRoomActionResult(message) {
     return;
   }
 
+  if (message.action === "leaveRoom") {
+    lobbySession.currentRoom = null;
+    forgetCurrentRoom();
+    requestChatHistory(LOBBY_CHAT_ROOM_ID);
+    renderLobby();
+    showLobbyStep("lobby");
+    setStartStatus("로비로 돌아왔습니다.");
+    return;
+  }
+
   if (!message.room) {
-    if (message.action === "leaveRoom") {
-      lobbySession.currentRoom = null;
-      forgetCurrentRoom();
-      requestChatHistory(LOBBY_CHAT_ROOM_ID);
-      renderLobby();
-      showLobbyStep("lobby");
-      setStartStatus("로비로 돌아왔습니다.");
-    }
     return;
   }
 
@@ -4650,6 +4669,10 @@ function handleRemoteGameSnapshot(payload) {
   if (payload.reason === "discardUpdate") {
     handleRemoteDiscardMeta(payload.meta);
   }
+
+  if (payload.reason === "playerLeft" && payload.meta?.reason) {
+    actionLog.textContent = payload.meta.reason;
+  }
 }
 
 function handleRemoteRevealSnapshot(payload) {
@@ -4837,8 +4860,8 @@ function isRemoteMultiplayerClient() {
   return Boolean(gameStarted && lobbySession.currentRoom && !isLocalHost());
 }
 
-function sendPlayerCommand(command) {
-  if (!isRemoteMultiplayerClient() || !canLocalControlActivePlayer()) {
+function sendPlayerCommand(command, { allowOutOfTurn = false } = {}) {
+  if (!isRemoteMultiplayerClient() || (!allowOutOfTurn && !canLocalControlActivePlayer())) {
     actionLog.textContent = `입력 불가 | active ${state.player?.name ?? "-"} | mine ${getUiPlayer()?.name ?? "-"}`;
     return false;
   }
@@ -4876,12 +4899,18 @@ async function handleRemotePlayerCommand(payload) {
     }
   }
 
+  const command = payload.command ?? {};
+
+  if (command.type === "leaveGame") {
+    convertControllerToAi(payload.controllerId, command.nickname ?? "플레이어");
+    return;
+  }
+
   if (state.player.controllerId !== payload.controllerId || state.player.isAi) {
     actionLog.textContent = `원격 입력 대기 중 | 현재 ${state.player.name}`;
     return;
   }
 
-  const command = payload.command ?? {};
   actionLog.textContent = `${state.player.name} 원격 입력 처리: ${command.type}`;
 
   if (command.type === "tileClick") {
@@ -4960,7 +4989,9 @@ async function handleRemotePlayerCommand(payload) {
 
   if (command.type === "endTurn") {
     endLocalTurn();
+    return;
   }
+
 }
 
 function escapeHtml(value) {
@@ -5501,22 +5532,20 @@ function ensureFloatingEndTurnUi() {
   boardPanel.append(floatingEndTurnButton);
 }
 
-function ensureFloatingEventDebugUi() {
+function ensureFloatingLeaveGameUi() {
   const boardPanel = document.querySelector(".game-board-panel");
-  if (!boardPanel || document.querySelector("#floatingEventDebugButton")) {
-    floatingEventDebugButton = document.querySelector("#floatingEventDebugButton");
+  if (!boardPanel || document.querySelector("#floatingLeaveGameButton")) {
+    floatingLeaveGameButton = document.querySelector("#floatingLeaveGameButton");
     return;
   }
 
-  floatingEventDebugButton = document.createElement("button");
-  floatingEventDebugButton.id = "floatingEventDebugButton";
-  floatingEventDebugButton.className = "floating-event-debug";
-  floatingEventDebugButton.type = "button";
-  floatingEventDebugButton.textContent = "이벤트 테스트";
-  floatingEventDebugButton.addEventListener("click", () => {
-    void runEventDebugCard();
-  });
-  boardPanel.append(floatingEventDebugButton);
+  floatingLeaveGameButton = document.createElement("button");
+  floatingLeaveGameButton.id = "floatingLeaveGameButton";
+  floatingLeaveGameButton.className = "floating-leave-game";
+  floatingLeaveGameButton.type = "button";
+  floatingLeaveGameButton.textContent = "게임 나가기";
+  floatingLeaveGameButton.addEventListener("click", leaveCurrentGameToAi);
+  boardPanel.append(floatingLeaveGameButton);
 }
 
 function ensureSessionChatUi() {
@@ -6305,6 +6334,10 @@ function bindLoadoutDrag() {
       return;
     }
 
+    if (event.target.closest("button, input, select, textarea")) {
+      return;
+    }
+
     const rect = loadoutPanel.getBoundingClientRect();
     loadoutDragState.dragging = true;
     loadoutDragState.pointerId = event.pointerId;
@@ -6744,33 +6777,6 @@ function sendDebugGrantValue(amount = 500) {
   setStartStatus(ok ? `디버그 가치 +${formatValue(amount)} 요청을 서버에 전송했습니다.` : "서버 연결 후 디버그 지급을 사용할 수 있습니다.");
 }
 
-async function runEventDebugCard() {
-  if (!state || eventRevealRunning || cardRevealRunning || attackSequenceRunning || movementSequenceRunning) {
-    return;
-  }
-
-  const localPlayer = getUiPlayer();
-  const playerIndex = Math.max(0, state.players.findIndex((player) => player.id === localPlayer?.id));
-  const card = events.find((entry) => entry.id === "my_precious") ?? events[0];
-  const result = state.triggerEventForPlayer(card?.id, playerIndex);
-
-  if (!result) {
-    actionLog.textContent = "이벤트 디버그 실행 실패";
-    return;
-  }
-
-  setDrawerTab("event");
-  loadoutPanel.classList.remove("is-minimized");
-  actionLog.textContent = `디버그 이벤트 실행: ${result.card.name}`;
-  setTabUnread("event", false);
-  renderer.render();
-  updateUi();
-  await playPendingEventResults();
-  await playPendingEventDiceRolls();
-  renderer.render();
-  updateUi();
-}
-
 function handleTileClick(tile, { fromRemote = false } = {}) {
   if (!fromRemote && isInteractionLocked()) {
     return;
@@ -7122,6 +7128,71 @@ function requestEndTurn() {
   }
 
   endLocalTurn();
+}
+
+function leaveCurrentGameToAi() {
+  if (!gameStarted || !lobbySession.currentRoom || !lobbySession.localPlayerId) {
+    return;
+  }
+
+  const nickname = lobbySession.nickname || getUiPlayer()?.name || "플레이어";
+  const roomId = lobbySession.currentRoom.id;
+
+  if (isLocalHost()) {
+    convertControllerToAi(lobbySession.localPlayerId, nickname);
+  } else {
+    sendPlayerCommand({ type: "leaveGame", nickname }, { allowOutOfTurn: true });
+  }
+
+  sendRoomAction("leaveRoom", { roomId });
+  markLocalPlayerDisconnected();
+  closeCorpseLoot("closed");
+  clearPendingTileAction();
+  gameStarted = false;
+  gameStarting = false;
+  forgetCurrentRoom();
+  lobbySession.currentRoom = null;
+  if (startOverlay) {
+    startOverlay.hidden = false;
+  }
+  renderLobby();
+  showLobbyStep("lobby");
+  setStartStatus(`${nickname}님이 게임에서 나갔습니다. COM이 대신 진행합니다.`);
+}
+
+function convertControllerToAi(controllerId, nickname = "플레이어") {
+  if (!state?.players?.length || !controllerId) {
+    return false;
+  }
+
+  let converted = false;
+  state.players.forEach((player, index) => {
+    if (player.controllerId !== controllerId) {
+      return;
+    }
+
+    player.isAi = true;
+    player.controllerId = null;
+    player.aiProfile = player.aiProfile ?? getAiProfileId(index + 1);
+    player.name = player.name.includes("(COM)") ? player.name : `${player.name} (COM)`;
+    converted = true;
+  });
+
+  if (!converted) {
+    return false;
+  }
+
+  state.raidLog.unshift(`${nickname}님이 나갔습니다. COM이 인계합니다.`);
+  actionLog.textContent = `${nickname}님이 나갔습니다. COM이 대신 진행합니다.`;
+  renderer.render();
+  updateUi();
+  broadcastGameSnapshot("playerLeft", {
+    controllerId,
+    playerName: nickname,
+    reason: `${nickname}님이 나갔습니다. COM이 대신 진행합니다.`
+  });
+  queueAiTurn();
+  return true;
 }
 
 async function runLootAction({ fromRemote = false } = {}) {
@@ -8846,9 +8917,9 @@ function updateUi({ skipSnapshotBroadcast = false } = {}) {
     floatingEndTurnButton.hidden = !gameStarted || state.raidEnded || !canLocalControlActivePlayer() || state.player?.isAi;
     floatingEndTurnButton.disabled = state.raidEnded || controlsLocked || hasBlockingPlayerDiscard();
   }
-  if (floatingEventDebugButton) {
-    floatingEventDebugButton.hidden = !gameStarted;
-    floatingEventDebugButton.disabled = state.raidEnded || attackSequenceRunning || cardRevealRunning || eventRevealRunning || movementSequenceRunning;
+  if (floatingLeaveGameButton) {
+    floatingLeaveGameButton.hidden = !gameStarted || !lobbySession.currentRoom;
+    floatingLeaveGameButton.disabled = attackSequenceRunning || cardRevealRunning || eventRevealRunning || movementSequenceRunning;
   }
   nextRaid.disabled = !state.raidEnded || state.raid >= 3 || controlsLocked;
   weaponSelect.disabled = controlsLocked || gameStarted;
