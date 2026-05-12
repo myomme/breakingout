@@ -1101,6 +1101,28 @@ body {
   opacity: 0.42;
 }
 
+.floating-event-debug {
+  position: fixed;
+  left: max(12px, env(safe-area-inset-left));
+  bottom: max(92px, calc(env(safe-area-inset-bottom) + 86px));
+  z-index: 25;
+  min-width: 112px;
+  min-height: 36px;
+  border: 1px solid rgba(240, 196, 107, 0.34);
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(45, 36, 22, 0.94), rgba(12, 10, 8, 0.94));
+  color: #ffe6aa;
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.26);
+  backdrop-filter: blur(8px);
+  font-size: 12px;
+  font-weight: 950;
+  pointer-events: auto;
+}
+
+.floating-event-debug[hidden] {
+  display: none !important;
+}
+
 .room-list,
 .room-slot-list {
   display: grid;
@@ -3825,42 +3847,6 @@ dd {
   color: #b9e86d;
 }
 
-.event-debug-card {
-  gap: 10px;
-}
-
-.event-debug-field {
-  display: grid;
-  gap: 6px;
-  color: rgba(232, 226, 211, 0.76);
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.event-debug-field select {
-  width: 100%;
-  min-height: 34px;
-  border: 1px solid rgba(214, 202, 174, 0.18);
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.07);
-  color: #f4eedf;
-  padding: 0 10px;
-  font-weight: 800;
-}
-
-.event-debug-field option {
-  background: #1b2422;
-  color: #f4eedf;
-}
-
-.event-debug-run {
-  min-height: 36px;
-  border-color: rgba(185, 232, 109, 0.36);
-  background: rgba(185, 232, 109, 0.12);
-  color: #eef8d0;
-  font-weight: 900;
-}
-
 .beginner-help-card {
   min-height: 0;
 }
@@ -4274,6 +4260,20 @@ dd {
   background: #4c7780;
   color: #fff;
   font-weight: 1000;
+}
+
+.preview-token--shop {
+  width: 42px;
+  height: 42px;
+  border-width: 2px;
+  font-size: 12px;
+}
+
+.preview-token--large {
+  width: 72px;
+  height: 72px;
+  border-width: 4px;
+  font-size: 16px;
 }
 
 .preview-token--token_ember {

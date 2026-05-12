@@ -632,20 +632,22 @@ export class GameRenderer {
       const center = this.worldToScreen(this.hexToWorld(renderPosition));
       const hitFlash = this.effects.some((effect) => effect.type === "hit" && effect.targetId === player.id);
       const tokenSkin = player.cosmetics?.equipped?.tokenSkin ?? "default";
+      const tokenRadius = this.getPlayerTokenRadius(active);
+      const detailLevel = this.getTokenDetailLevel();
       const fillColor = getPlayerTokenFill({ active, attackable, hitFlash, tokenSkin });
       const strokeColor = getPlayerTokenStroke({ active, tokenSkin });
 
       this.ctx.beginPath();
-      this.ctx.arc(center.x, center.y, active ? 9 : 7, 0, Math.PI * 2);
+      this.ctx.arc(center.x, center.y, tokenRadius, 0, Math.PI * 2);
       this.ctx.fillStyle = fillColor;
       this.ctx.fill();
       this.ctx.strokeStyle = strokeColor;
-      this.ctx.lineWidth = active ? 3 : 2;
+      this.ctx.lineWidth = active ? 3 : 2.2;
       this.ctx.stroke();
 
       if (tokenSkin === "token_ember") {
         this.ctx.beginPath();
-        this.ctx.arc(center.x, center.y, active ? 12 : 10, 0, Math.PI * 2);
+        this.ctx.arc(center.x, center.y, tokenRadius + 3, 0, Math.PI * 2);
         this.ctx.strokeStyle = "rgba(255, 153, 74, 0.48)";
         this.ctx.lineWidth = 2;
         this.ctx.stroke();
@@ -653,7 +655,7 @@ export class GameRenderer {
 
       if (tokenSkin === "token_signal_blue") {
         this.ctx.beginPath();
-        this.ctx.arc(center.x, center.y, active ? 13 : 11, 0, Math.PI * 2);
+        this.ctx.arc(center.x, center.y, tokenRadius + 4, 0, Math.PI * 2);
         this.ctx.strokeStyle = "rgba(99, 194, 255, 0.58)";
         this.ctx.lineWidth = 2;
         this.ctx.stroke();
@@ -665,11 +667,11 @@ export class GameRenderer {
         this.ctx.rotate(Math.PI / 4);
         this.ctx.strokeStyle = "rgba(255, 212, 87, 0.68)";
         this.ctx.lineWidth = 2;
-        this.ctx.strokeRect(active ? -11 : -9, active ? -11 : -9, active ? 22 : 18, active ? 22 : 18);
+        this.ctx.strokeRect(-tokenRadius - 2, -tokenRadius - 2, (tokenRadius + 2) * 2, (tokenRadius + 2) * 2);
         this.ctx.restore();
       }
 
-      drawAdvancedTokenMarkings(this.ctx, center, active ? 13 : 11, tokenSkin);
+      drawAdvancedTokenMarkings(this.ctx, center, tokenRadius + 3, tokenSkin, detailLevel);
 
       if (attackable || hitFlash) {
         this.ctx.beginPath();
@@ -679,7 +681,7 @@ export class GameRenderer {
         this.ctx.stroke();
       }
 
-      if (this.camera.zoom > 0.55) {
+      if (this.camera.zoom > 0.5) {
         this.ctx.fillStyle = "#ffffff";
         this.ctx.font = "700 8px Inter, system-ui, sans-serif";
         this.ctx.textAlign = "center";
@@ -687,6 +689,19 @@ export class GameRenderer {
         this.ctx.fillText(String(index + 1), center.x, center.y + 0.5);
       }
     });
+  }
+
+  getPlayerTokenRadius(active) {
+    const base = active ? 11.5 : 9.5;
+    if (this.camera.zoom < 0.42) return Math.max(7, base - 2);
+    if (this.camera.zoom > 1.25) return base + 1.5;
+    return base;
+  }
+
+  getTokenDetailLevel() {
+    if (this.camera.zoom < 0.45) return 0;
+    if (this.camera.zoom < 0.85) return 1;
+    return 2;
   }
 
   drawEffects() {
@@ -1237,7 +1252,7 @@ const TOKEN_SKIN_STYLES = {
   token_extraction_mark: { fill: "#426735", activeFill: "#1f321b", stroke: "#b8f36e", activeStroke: "#edffd2", accent: "#b8f36e", mode: "extract" }
 };
 
-function drawAdvancedTokenMarkings(ctx, center, radius, tokenSkin) {
+function drawAdvancedTokenMarkings(ctx, center, radius, tokenSkin, detailLevel = 1) {
   const style = TOKEN_SKIN_STYLES[tokenSkin];
   if (!style) {
     return;
@@ -1257,17 +1272,19 @@ function drawAdvancedTokenMarkings(ctx, center, radius, tokenSkin) {
     ctx.stroke();
   } else if (style.mode === "recon") {
     ctx.globalAlpha = 0.66;
-    ctx.setLineDash([3, 3]);
-    ctx.beginPath();
-    ctx.arc(0, 0, radius + 3, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.setLineDash([]);
+    if (detailLevel >= 1) {
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.arc(0, 0, radius + 3, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
     ctx.beginPath();
     ctx.arc(radius * 0.62, -radius * 0.62, 2, 0, Math.PI * 2);
     ctx.fill();
   } else if (style.mode === "thermal") {
     ctx.globalAlpha = 0.42;
-    [-5, 0, 5].forEach((y, index) => {
+    (detailLevel >= 2 ? [-5, 0, 5] : [0]).forEach((y, index) => {
       ctx.beginPath();
       ctx.moveTo(-radius + index * 2, y);
       ctx.lineTo(radius - index * 2, y - 3);
@@ -1275,11 +1292,13 @@ function drawAdvancedTokenMarkings(ctx, center, radius, tokenSkin) {
     });
   } else if (style.mode === "hazmat") {
     ctx.globalAlpha = 0.64;
-    ctx.setLineDash([4, 3]);
-    ctx.beginPath();
-    ctx.arc(0, 0, radius + 4, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.setLineDash([]);
+    if (detailLevel >= 1) {
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath();
+      ctx.arc(0, 0, radius + 4, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
     ctx.beginPath();
     ctx.moveTo(0, -radius * 0.8);
     ctx.lineTo(radius * 0.62, radius * 0.46);
@@ -1288,7 +1307,7 @@ function drawAdvancedTokenMarkings(ctx, center, radius, tokenSkin) {
     ctx.stroke();
   } else if (style.mode === "jammer") {
     ctx.globalAlpha = 0.58;
-    [-5, 0, 5].forEach((y, index) => {
+    (detailLevel >= 2 ? [-5, 0, 5] : [-3, 3]).forEach((y, index) => {
       ctx.beginPath();
       ctx.moveTo(-radius, y);
       ctx.lineTo(radius * (0.5 + index * 0.18), y + (index % 2 ? -2 : 2));
@@ -1297,10 +1316,12 @@ function drawAdvancedTokenMarkings(ctx, center, radius, tokenSkin) {
   } else if (style.mode === "blackCell") {
     ctx.globalAlpha = 0.44;
     ctx.strokeRect(-radius * 0.55, -radius * 0.55, radius * 1.1, radius * 1.1);
-    ctx.beginPath();
-    ctx.moveTo(-radius * 0.52, radius * 0.52);
-    ctx.lineTo(radius * 0.52, -radius * 0.52);
-    ctx.stroke();
+    if (detailLevel >= 2) {
+      ctx.beginPath();
+      ctx.moveTo(-radius * 0.52, radius * 0.52);
+      ctx.lineTo(radius * 0.52, -radius * 0.52);
+      ctx.stroke();
+    }
   } else if (style.mode === "contraband") {
     ctx.globalAlpha = 0.5;
     ctx.rotate(-0.35);

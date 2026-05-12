@@ -122,6 +122,7 @@ let gameChatForm = document.querySelector("#gameChatForm");
 let gameChatInput = document.querySelector("#gameChatInput");
 let mobileViewResetButton = null;
 let floatingEndTurnButton = null;
+let floatingEventDebugButton = null;
 let chatDisabled = false;
 
 let state;
@@ -159,8 +160,6 @@ let eventDrawerEffect = null;
 let eventPhaseBadge = null;
 let eventCardPreview = null;
 let eventHoldList = null;
-let eventDebugSelect = null;
-let eventDebugRun = null;
 let cosmeticShopList = null;
 let lobbyShopStep = null;
 let lobbyShopList = null;
@@ -1800,6 +1799,7 @@ async function bootstrap() {
   ensureBeginnerHelpUi();
   ensureMobileViewResetUi();
   ensureFloatingEndTurnUi();
+  ensureFloatingEventDebugUi();
   updateUi();
   renderer.render();
   gameBootstrapped = true;
@@ -5303,17 +5303,6 @@ function setupDrawerPanes() {
           <li><span>No held cards</span></li>
         </ul>
       </section>
-      <section class="drawer-card event-debug-card">
-        <div class="loadout-section-title">
-          <h3>Event Debug</h3>
-          <span class="loadout-count">Test</span>
-        </div>
-        <label class="event-debug-field">
-          <span>Card</span>
-          <select id="eventDebugSelect"></select>
-        </label>
-        <button id="eventDebugRun" class="event-debug-run" type="button">선택 카드 실행</button>
-      </section>
     </div>
   `;
 
@@ -5346,17 +5335,8 @@ function setupDrawerPanes() {
   eventPhaseBadge = document.querySelector("#eventPhaseBadge");
   eventCardPreview = document.querySelector("#eventCardPreview");
   eventHoldList = document.querySelector("#eventHoldList");
-  eventDebugSelect = document.querySelector("#eventDebugSelect");
-  eventDebugRun = document.querySelector("#eventDebugRun");
   beginnerHelpToggle = document.querySelector("#beginnerHelpToggle");
   beginnerHelpSwitch = document.querySelector("#beginnerHelpSwitch");
-
-  if (eventDebugRun && eventDebugRun.dataset.bound !== "true") {
-    eventDebugRun.addEventListener("click", () => {
-      void runEventDebugCard();
-    });
-    eventDebugRun.dataset.bound = "true";
-  }
 
   raidOrderOverlay = document.querySelector("#raidOrderOverlay");
   raidOrderStage = document.querySelector("#raidOrderStage");
@@ -5375,7 +5355,6 @@ function setupDrawerPanes() {
   }
 
   loadoutPanel.dataset.tabsReady = "true";
-  populateEventDebugSelect();
   bindBeginnerHelpControls();
 }
 
@@ -5520,6 +5499,24 @@ function ensureFloatingEndTurnUi() {
   floatingEndTurnButton.textContent = "턴 종료";
   floatingEndTurnButton.addEventListener("click", requestEndTurn);
   boardPanel.append(floatingEndTurnButton);
+}
+
+function ensureFloatingEventDebugUi() {
+  const boardPanel = document.querySelector(".game-board-panel");
+  if (!boardPanel || document.querySelector("#floatingEventDebugButton")) {
+    floatingEventDebugButton = document.querySelector("#floatingEventDebugButton");
+    return;
+  }
+
+  floatingEventDebugButton = document.createElement("button");
+  floatingEventDebugButton.id = "floatingEventDebugButton";
+  floatingEventDebugButton.className = "floating-event-debug";
+  floatingEventDebugButton.type = "button";
+  floatingEventDebugButton.textContent = "이벤트 테스트";
+  floatingEventDebugButton.addEventListener("click", () => {
+    void runEventDebugCard();
+  });
+  boardPanel.append(floatingEventDebugButton);
 }
 
 function ensureSessionChatUi() {
@@ -6441,7 +6438,7 @@ function renderCosmeticItem(item, account, context) {
   return `
     <article class="cosmetic-shop-item ${isEquipped ? "is-equipped" : ""} ${isOwned ? "is-owned" : ""} ${affordable ? "is-affordable" : "is-unaffordable"} rarity-${String(item.rarity ?? "standard").toLowerCase()}">
       <div class="cosmetic-shop-preview ${getCosmeticClass(item.id, "cosmetic-preview--")}">
-        <span>${escapeHtml(item.preview ?? item.categoryLabel)}</span>
+        ${renderCosmeticPreviewIcon(item)}
       </div>
       <div class="cosmetic-shop-copy">
         <div class="cosmetic-shop-meta">
@@ -6469,6 +6466,14 @@ function renderCosmeticItem(item, account, context) {
       >보기</button>
     </article>
   `;
+}
+
+function renderCosmeticPreviewIcon(item) {
+  if (item.category === "tokenSkin") {
+    return `<span class="preview-token preview-token--shop ${getCosmeticClass(item.id, "preview-token--")}">1</span>`;
+  }
+
+  return `<span>${escapeHtml(item.preview ?? item.categoryLabel)}</span>`;
 }
 
 function bindCosmeticList(list, markup) {
@@ -6622,7 +6627,7 @@ function renderCosmeticPreviewScene(item, account) {
   if (item.category === "tokenSkin") {
     return `
       <div class="preview-token-field">
-        <span class="preview-token ${getCosmeticClass(item.id, "preview-token--")}">1</span>
+        <span class="preview-token preview-token--large ${getCosmeticClass(item.id, "preview-token--")}">1</span>
       </div>
     `;
   }
@@ -6739,30 +6744,15 @@ function sendDebugGrantValue(amount = 500) {
   setStartStatus(ok ? `디버그 가치 +${formatValue(amount)} 요청을 서버에 전송했습니다.` : "서버 연결 후 디버그 지급을 사용할 수 있습니다.");
 }
 
-function populateEventDebugSelect() {
-  if (!eventDebugSelect || !events?.length) {
-    return;
-  }
-
-  eventDebugSelect.innerHTML = events
-    .map((card) => {
-      const number = String(card.number ?? "?").padStart(2, "0");
-      return `<option value="${card.id}">${number}. ${card.name}</option>`;
-    })
-    .join("");
-
-  const precious = events.find((card) => card.id === "my_precious");
-  if (precious) {
-    eventDebugSelect.value = precious.id;
-  }
-}
-
 async function runEventDebugCard() {
-  if (!eventDebugSelect || !state || eventRevealRunning || cardRevealRunning || attackSequenceRunning || movementSequenceRunning) {
+  if (!state || eventRevealRunning || cardRevealRunning || attackSequenceRunning || movementSequenceRunning) {
     return;
   }
 
-  const result = state.triggerEventForPlayer(eventDebugSelect.value, 0);
+  const localPlayer = getUiPlayer();
+  const playerIndex = Math.max(0, state.players.findIndex((player) => player.id === localPlayer?.id));
+  const card = events.find((entry) => entry.id === "my_precious") ?? events[0];
+  const result = state.triggerEventForPlayer(card?.id, playerIndex);
 
   if (!result) {
     actionLog.textContent = "이벤트 디버그 실행 실패";
@@ -8855,6 +8845,10 @@ function updateUi({ skipSnapshotBroadcast = false } = {}) {
   if (floatingEndTurnButton) {
     floatingEndTurnButton.hidden = !gameStarted || state.raidEnded || !canLocalControlActivePlayer() || state.player?.isAi;
     floatingEndTurnButton.disabled = state.raidEnded || controlsLocked || hasBlockingPlayerDiscard();
+  }
+  if (floatingEventDebugButton) {
+    floatingEventDebugButton.hidden = !gameStarted;
+    floatingEventDebugButton.disabled = state.raidEnded || attackSequenceRunning || cardRevealRunning || eventRevealRunning || movementSequenceRunning;
   }
   nextRaid.disabled = !state.raidEnded || state.raid >= 3 || controlsLocked;
   weaponSelect.disabled = controlsLocked || gameStarted;
