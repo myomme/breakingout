@@ -419,6 +419,86 @@ const COSMETIC_CATALOG = [
     price: 280
   },
   {
+    id: "token_standard_issue",
+    category: "tokenSkin",
+    categoryLabel: "말",
+    label: "Standard Issue",
+    rarity: "Field",
+    preview: "1",
+    description: "기본 지급 장비 감성의 무광 폴리머 토큰입니다. 흰 식별 링과 짧은 장비 라인이 들어갑니다.",
+    price: 120
+  },
+  {
+    id: "token_recon",
+    category: "tokenSkin",
+    categoryLabel: "말",
+    label: "Recon",
+    rarity: "Rare",
+    preview: "1",
+    description: "정찰 UI 스타일의 얇은 거리계 링과 관측 점 마킹을 가진 말 스킨입니다.",
+    price: 220
+  },
+  {
+    id: "token_thermal",
+    category: "tokenSkin",
+    categoryLabel: "말",
+    label: "Thermal",
+    rarity: "Epic",
+    preview: "1",
+    description: "열화상 식별 패널을 모티브로 한 온도 밴드와 센서 코어가 표시됩니다.",
+    price: 340
+  },
+  {
+    id: "token_hazmat",
+    category: "tokenSkin",
+    categoryLabel: "말",
+    label: "Hazmat",
+    rarity: "Epic",
+    preview: "1",
+    description: "오염 경고 장비 감성의 경고색 분할 링과 방호 씰이 적용됩니다.",
+    price: 360
+  },
+  {
+    id: "token_jammer",
+    category: "tokenSkin",
+    categoryLabel: "말",
+    label: "Jammer",
+    rarity: "Epic",
+    preview: "1",
+    description: "전파 교란 모듈처럼 비대칭 송신 링과 노이즈 스트립이 들어간 스킨입니다.",
+    price: 380
+  },
+  {
+    id: "token_black_cell",
+    category: "tokenSkin",
+    categoryLabel: "말",
+    label: "Black Cell",
+    rarity: "Legend",
+    preview: "1",
+    description: "낮은 반사율의 흑색 세라믹 장비와 절제된 회색 링으로 구성된 고급 스킨입니다.",
+    price: 520
+  },
+  {
+    id: "token_contraband",
+    category: "tokenSkin",
+    categoryLabel: "말",
+    label: "Contraband",
+    rarity: "Legend",
+    preview: "1",
+    description: "블랙마켓 장비 감성의 봉인 테이프, 긁힌 금속 링, 황동빛 포인트가 보입니다.",
+    price: 460
+  },
+  {
+    id: "token_extraction_mark",
+    category: "tokenSkin",
+    categoryLabel: "말",
+    label: "Extraction Mark",
+    rarity: "Legend",
+    preview: "1",
+    description: "탈출 마커와 구조 신호를 모티브로 한 집결 지점 식별 스킨입니다.",
+    price: 500
+  },
+  {
     id: "title_rookie",
     category: "title",
     categoryLabel: "칭호",

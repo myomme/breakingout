@@ -669,6 +669,8 @@ export class GameRenderer {
         this.ctx.restore();
       }
 
+      drawAdvancedTokenMarkings(this.ctx, center, active ? 13 : 11, tokenSkin);
+
       if (attackable || hitFlash) {
         this.ctx.beginPath();
         this.ctx.arc(center.x, center.y, hitFlash ? 18 : 15, 0, Math.PI * 2);
@@ -1175,6 +1177,11 @@ function getPlayerTokenFill({ active, attackable, hitFlash, tokenSkin }) {
     return "#f18e84";
   }
 
+  const advanced = TOKEN_SKIN_STYLES[tokenSkin];
+  if (advanced) {
+    return attackable ? "#b5302d" : active ? advanced.activeFill : advanced.fill;
+  }
+
   if (tokenSkin === "token_ember") {
     return active ? "#8a3f22" : attackable ? "#b5302d" : "#a85d32";
   }
@@ -1195,6 +1202,11 @@ function getPlayerTokenFill({ active, attackable, hitFlash, tokenSkin }) {
 }
 
 function getPlayerTokenStroke({ active, tokenSkin }) {
+  const advanced = TOKEN_SKIN_STYLES[tokenSkin];
+  if (advanced) {
+    return active ? advanced.activeStroke : advanced.stroke;
+  }
+
   if (tokenSkin === "token_ember") {
     return active ? "#ffe0b2" : "#ffb46f";
   }
@@ -1212,6 +1224,107 @@ function getPlayerTokenStroke({ active, tokenSkin }) {
   }
 
   return active ? "#ffffff" : "#e7efe8";
+}
+
+const TOKEN_SKIN_STYLES = {
+  token_standard_issue: { fill: "#4f5a52", activeFill: "#27342f", stroke: "#dce5d8", activeStroke: "#ffffff", accent: "#dce5d8", mode: "standard" },
+  token_recon: { fill: "#2f5940", activeFill: "#183526", stroke: "#9dc6a6", activeStroke: "#d7ffe1", accent: "#9dc6a6", mode: "recon" },
+  token_thermal: { fill: "#7a4b2a", activeFill: "#3b2519", stroke: "#f0a35c", activeStroke: "#ffd0a0", accent: "#f0a35c", mode: "thermal" },
+  token_hazmat: { fill: "#77702c", activeFill: "#383612", stroke: "#d4c45b", activeStroke: "#fff1a5", accent: "#d4c45b", mode: "hazmat" },
+  token_jammer: { fill: "#2b6370", activeFill: "#17343b", stroke: "#78a9b7", activeStroke: "#c9f5ff", accent: "#78a9b7", mode: "jammer" },
+  token_black_cell: { fill: "#161a1d", activeFill: "#070909", stroke: "#7f8790", activeStroke: "#d1d6db", accent: "#7f8790", mode: "blackCell" },
+  token_contraband: { fill: "#73502c", activeFill: "#332112", stroke: "#b9854b", activeStroke: "#f1c47f", accent: "#b9854b", mode: "contraband" },
+  token_extraction_mark: { fill: "#426735", activeFill: "#1f321b", stroke: "#b8f36e", activeStroke: "#edffd2", accent: "#b8f36e", mode: "extract" }
+};
+
+function drawAdvancedTokenMarkings(ctx, center, radius, tokenSkin) {
+  const style = TOKEN_SKIN_STYLES[tokenSkin];
+  if (!style) {
+    return;
+  }
+
+  ctx.save();
+  ctx.translate(center.x, center.y);
+  ctx.strokeStyle = style.accent;
+  ctx.fillStyle = style.accent;
+  ctx.lineWidth = 1.4;
+
+  if (style.mode === "standard") {
+    ctx.globalAlpha = 0.55;
+    ctx.beginPath();
+    ctx.moveTo(-radius * 0.82, radius * 0.35);
+    ctx.lineTo(radius * 0.82, -radius * 0.42);
+    ctx.stroke();
+  } else if (style.mode === "recon") {
+    ctx.globalAlpha = 0.66;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.arc(0, 0, radius + 3, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.arc(radius * 0.62, -radius * 0.62, 2, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (style.mode === "thermal") {
+    ctx.globalAlpha = 0.42;
+    [-5, 0, 5].forEach((y, index) => {
+      ctx.beginPath();
+      ctx.moveTo(-radius + index * 2, y);
+      ctx.lineTo(radius - index * 2, y - 3);
+      ctx.stroke();
+    });
+  } else if (style.mode === "hazmat") {
+    ctx.globalAlpha = 0.64;
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath();
+    ctx.arc(0, 0, radius + 4, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.moveTo(0, -radius * 0.8);
+    ctx.lineTo(radius * 0.62, radius * 0.46);
+    ctx.lineTo(-radius * 0.62, radius * 0.46);
+    ctx.closePath();
+    ctx.stroke();
+  } else if (style.mode === "jammer") {
+    ctx.globalAlpha = 0.58;
+    [-5, 0, 5].forEach((y, index) => {
+      ctx.beginPath();
+      ctx.moveTo(-radius, y);
+      ctx.lineTo(radius * (0.5 + index * 0.18), y + (index % 2 ? -2 : 2));
+      ctx.stroke();
+    });
+  } else if (style.mode === "blackCell") {
+    ctx.globalAlpha = 0.44;
+    ctx.strokeRect(-radius * 0.55, -radius * 0.55, radius * 1.1, radius * 1.1);
+    ctx.beginPath();
+    ctx.moveTo(-radius * 0.52, radius * 0.52);
+    ctx.lineTo(radius * 0.52, -radius * 0.52);
+    ctx.stroke();
+  } else if (style.mode === "contraband") {
+    ctx.globalAlpha = 0.5;
+    ctx.rotate(-0.35);
+    ctx.fillRect(-radius, -3, radius * 2, 6);
+    ctx.strokeStyle = "rgba(0,0,0,0.42)";
+    ctx.beginPath();
+    ctx.moveTo(-radius, 0);
+    ctx.lineTo(radius, 0);
+    ctx.stroke();
+  } else if (style.mode === "extract") {
+    ctx.globalAlpha = 0.72;
+    ctx.beginPath();
+    ctx.moveTo(0, -radius);
+    ctx.lineTo(radius * 0.66, 0);
+    ctx.lineTo(radius * 0.28, 0);
+    ctx.lineTo(radius * 0.28, radius * 0.72);
+    ctx.lineTo(-radius * 0.28, radius * 0.72);
+    ctx.lineTo(-radius * 0.28, 0);
+    ctx.lineTo(-radius * 0.66, 0);
+    ctx.closePath();
+    ctx.stroke();
+  }
+
+  ctx.restore();
 }
 
 function easeOutCubic(value) {
