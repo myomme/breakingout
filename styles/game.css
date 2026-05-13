@@ -5093,7 +5093,7 @@ dd {
     align-self: start;
     max-height: none;
     overflow: visible;
-    padding: 12px;
+    padding: 12px 12px calc(92px + env(safe-area-inset-bottom));
   }
 
   .lobby-player-strip {
