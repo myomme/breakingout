@@ -134,6 +134,7 @@ let dice;
 let armor;
 let events;
 let pendingTileAction = null;
+let pendingMovePrediction = null;
 let attackSequenceRunning = false;
 let cardRevealRunning = false;
 let eventRevealRunning = false;
@@ -780,6 +781,7 @@ const SOUND_URLS = {
   switchOff: new URL("../../assets/sfx/switchoff.mp3", import.meta.url).href,
   commonLoot: new URL("../../assets/sfx/common.mp3", import.meta.url).href,
   goldLoot: new URL("../../assets/sfx/gold.mp3", import.meta.url).href,
+  moveBlocked: new URL("../../assets/sfx/invalid.mp3", import.meta.url).href,
   voRaidStart: new URL("../../assets/sfx/vo_raid_start.mp3", import.meta.url).href,
   voRaidMid: new URL("../../assets/sfx/vo_raid_mid.mp3", import.meta.url).href,
   voRaidEnd: new URL("../../assets/sfx/vo_raid_end.mp3", import.meta.url).href,
@@ -811,6 +813,7 @@ const SOUND_SETTINGS = {
   switchOff: 100,
   commonLoot: 100,
   goldLoot: 100,
+  moveBlocked: 100,
   voRaidStart: 100,
   voRaidMid: 100,
   voRaidEnd: 100,
@@ -4330,6 +4333,8 @@ function initRoomSync() {
           handleRemoteGameSnapshot(event.data);
         } else if (event.data?.type === "playerCommand") {
           void handleRemotePlayerCommand(event.data);
+        } else if (event.data?.type === "playerCommandResult") {
+          handlePlayerCommandResult(event.data);
         } else {
           handleRoomStoreChanged(event.data?.reason ?? "broadcast", event.data?.rooms ?? null);
         }
@@ -4348,7 +4353,12 @@ function initRoomSync() {
       }
     } else if (event.key?.startsWith(PLAYER_COMMAND_STORAGE_PREFIX) && event.newValue) {
       try {
-        void handleRemotePlayerCommand(JSON.parse(event.newValue));
+        const payload = JSON.parse(event.newValue);
+        if (payload.type === "playerCommandResult") {
+          handlePlayerCommandResult(payload);
+        } else {
+          void handleRemotePlayerCommand(payload);
+        }
       } catch {
         // Ignore malformed external command writes.
       }
@@ -4514,6 +4524,11 @@ function handleServerMessage(message) {
 
   if (message.type === "playerCommand") {
     void handleRemotePlayerCommand(message);
+    return;
+  }
+
+  if (message.type === "playerCommandResult") {
+    handlePlayerCommandResult(message);
   }
 }
 
@@ -5288,6 +5303,10 @@ function animateRemotePositionChanges(previousPositions, meta = {}) {
 
   const viewer = getUiPlayer();
   state.players.forEach((player) => {
+    if (pendingMovePrediction && player.id === viewer?.id) {
+      return;
+    }
+
     const previous = previousPositions.get(player.id);
     const current = player.position;
     const metaPath = meta.type === "movement" && meta.unitId === player.id && Array.isArray(meta.path)
@@ -5433,7 +5452,115 @@ function sendPlayerCommand(command, { allowOutOfTurn = false } = {}) {
   sendServerMessage(payload);
   writeJsonStorage(`${PLAYER_COMMAND_STORAGE_PREFIX}${payload.roomId}:${payload.at}:${Math.random().toString(36).slice(2)}`, payload);
   actionLog.textContent = "입력을 방장에게 전송했습니다.";
+  return payload;
+}
+
+function sendPlayerCommandResult(targetControllerId, commandId, command, status, detail = {}) {
+  if (!isLocalHost() || !lobbySession.currentRoom?.id || !targetControllerId || !commandId) {
+    return false;
+  }
+
+  const payload = {
+    type: "playerCommandResult",
+    roomId: lobbySession.currentRoom.id,
+    sourceId: lobbySession.localPlayerId,
+    targetControllerId,
+    commandId,
+    commandType: command?.type ?? null,
+    action: command?.action ?? null,
+    status,
+    ...detail,
+    at: Date.now()
+  };
+
+  roomSyncChannel?.postMessage(payload);
+  sendServerMessage(payload);
   return true;
+}
+
+function handlePlayerCommandResult(message) {
+  if (!message || message.targetControllerId !== lobbySession.localPlayerId) {
+    return;
+  }
+
+  if (message.commandType === "tileAction" && message.action === "move") {
+    handlePredictedMoveResult(message);
+  }
+}
+
+async function startPredictedMove(tile, commandPayload) {
+  if (!tile || !commandPayload?.commandId || pendingMovePrediction || !state?.player) {
+    return false;
+  }
+
+  const entry = state.getMovementEntryTo(tile);
+  if (!entry) {
+    playMoveBlockedFeedback();
+    return false;
+  }
+
+  const from = state.player.position ? { ...state.player.position } : null;
+  const to = { q: tile.q, r: tile.r };
+  const path = entry.path?.map((step) => ({ ...step })) ?? [from, to].filter(Boolean);
+  pendingMovePrediction = {
+    commandId: commandPayload.commandId,
+    from,
+    to,
+    path,
+    timeout: window.setTimeout(() => {
+      if (pendingMovePrediction?.commandId === commandPayload.commandId) {
+        handlePredictedMoveResult({
+          commandId: commandPayload.commandId,
+          commandType: "tileAction",
+          action: "move",
+          status: "rejected",
+          reason: "이동 확인 시간이 초과되었습니다."
+        });
+      }
+    }, 3500)
+  };
+
+  movementSequenceRunning = true;
+  clearPendingTileAction();
+
+  try {
+    await renderer.playMovementAnimation(state.player.id, path);
+  } finally {
+    movementSequenceRunning = false;
+  }
+
+  actionLog.textContent = "이동 확인 중...";
+  renderer.render();
+  updateUi({ skipSnapshotBroadcast: true });
+  return true;
+}
+
+async function handlePredictedMoveResult(message) {
+  if (!pendingMovePrediction || pendingMovePrediction.commandId !== message.commandId) {
+    return;
+  }
+
+  if (message.status === "confirmed") {
+    window.clearTimeout(pendingMovePrediction.timeout);
+    pendingMovePrediction = null;
+    actionLog.textContent = "이동 확정";
+    return;
+  }
+
+  const prediction = pendingMovePrediction;
+  pendingMovePrediction = null;
+  window.clearTimeout(prediction.timeout);
+
+  if (prediction.from && prediction.to) {
+    await renderer.playMovementAnimation(state.player.id, [prediction.to, prediction.from]);
+  }
+
+  playMoveBlockedFeedback(message.reason ?? "이동 불가");
+}
+
+function playMoveBlockedFeedback(message = "이동 불가") {
+  actionLog.textContent = message;
+  playSound(SOUND_URLS.moveBlocked, { volume: 0.82 }, { allowQueue: false });
 }
 
 async function handleRemotePlayerCommand(payload) {
@@ -5474,6 +5601,9 @@ async function handleRemotePlayerCommand(payload) {
   }
 
   if (state.player.controllerId !== payload.controllerId || state.player.isAi) {
+    if (command.type === "tileAction" && command.action === "move") {
+      sendPlayerCommandResult(payload.controllerId, payload.commandId, command, "rejected", { reason: "현재 턴이 아닙니다." });
+    }
     actionLog.textContent = `원격 입력 대기 중 | 현재 ${state.player.name}`;
     return;
   }
@@ -5496,7 +5626,16 @@ async function handleRemotePlayerCommand(payload) {
         buildTileAction(tile, { showUi: false });
       }
     }
-    await runPendingTileAction(command.action, { fromRemote: true });
+    const ok = await runPendingTileAction(command.action, { fromRemote: true });
+    if (command.action === "move") {
+      sendPlayerCommandResult(
+        payload.controllerId,
+        payload.commandId,
+        command,
+        ok ? "confirmed" : "rejected",
+        { reason: ok ? "move:confirmed" : "이동 불가" }
+      );
+    }
     return;
   }
 
@@ -5741,6 +5880,13 @@ function bindEvents() {
       action: button.dataset.action,
       tileKey: pendingTileAction.tileKey
     })) {
+      if (button.dataset.action === "corpseLoot") {
+        const tile = state.gameMap.tilesByKey.get(pendingTileAction.tileKey);
+        const corpseBag = state.getCorpseBagAtTile(tile);
+        if (corpseBag) {
+          openCorpseLootPanel(corpseBag.id, { announce: `${corpseBag.ownerName}'s corpse bag opening...` });
+        }
+      }
       clearPendingTileAction();
       return;
     }
@@ -7607,8 +7753,16 @@ function handleTileClick(tile, { fromRemote = false } = {}) {
   const key = `${tile.q},${tile.r}`;
 
   if (pendingTileAction?.type === "move" && pendingTileAction.tileKey === key) {
-    if (!fromRemote && sendPlayerCommand({ type: "tileAction", action: "move" })) {
-      clearPendingTileAction();
+    if (!fromRemote) {
+      const commandPayload = sendPlayerCommand({ type: "tileAction", action: "move", tileKey: key });
+      if (commandPayload) {
+        void startPredictedMove(tile, commandPayload);
+        return;
+      }
+    }
+
+    if (fromRemote) {
+      void performMoveToTile(tile, { fromRemote });
       return;
     }
 
@@ -7864,25 +8018,24 @@ function renderCorpseLootItem(item, index, source) {
 
 async function runPendingTileAction(action, { fromRemote = false } = {}) {
   if (!pendingTileAction) {
-    return;
+    return false;
   }
 
   const tile = state.gameMap.tilesByKey.get(pendingTileAction.tileKey);
 
   if (!tile) {
     clearPendingTileAction();
-    return;
+    return false;
   }
 
   if (action === "move") {
-    await performMoveToTile(tile);
-    return;
+    return performMoveToTile(tile, { fromRemote });
   }
 
   if (action === "attack") {
     clearPendingTileAction();
     await runAttackSequence();
-    return;
+    return true;
   }
 
   if (action === "loot") {
@@ -7903,12 +8056,12 @@ async function runPendingTileAction(action, { fromRemote = false } = {}) {
     updateUi();
 
     if (item && maybeAutoAdvanceTurn("Loot complete")) {
-      return;
+      return true;
     }
 
     showContextActionForCurrentTile();
     queueAiTurn();
-    return;
+    return Boolean(item);
   }
 
   if (action === "corpseLoot") {
@@ -7924,10 +8077,12 @@ async function runPendingTileAction(action, { fromRemote = false } = {}) {
       }
       renderer.render();
       updateUi();
-      return;
+      return Boolean(corpseBag);
     }
-    openCorpseLoot(tile);
+    return openCorpseLoot(tile);
   }
+
+  return false;
 }
 
 function endLocalTurn() {
@@ -8113,7 +8268,7 @@ async function runLootAction({ fromRemote = false } = {}) {
   }
 }
 
-async function performMoveToTile(tile, { reason = "Move complete" } = {}) {
+async function performMoveToTile(tile, { reason = "Move complete", fromRemote = false } = {}) {
   if (movementSequenceRunning || !tile) {
     return false;
   }
@@ -8140,7 +8295,7 @@ async function performMoveToTile(tile, { reason = "Move complete" } = {}) {
 
   try {
     if (revealMovement) {
-      await renderer.playMovementAnimation(state.player.id, moveResult.path);
+      await renderer.playMovementAnimation(state.player.id, moveResult.path, { silent: fromRemote });
       if (state.player.isAi) {
         await waitAiTiming("afterVisibleAction");
       }
@@ -9305,7 +9460,11 @@ function playDiceRollSfx(diceCount) {
   }
 }
 
-function handleMovementStepSfx() {
+function handleMovementStepSfx({ silent = false } = {}) {
+  if (silent) {
+    return;
+  }
+
   playSound(SOUND_URLS.pieceTap, { volume: 0.62 });
 }
 

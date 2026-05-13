@@ -1021,7 +1021,7 @@ export class GameRenderer {
     this.ensureAnimationLoop();
   }
 
-  playMovementAnimation(unitId, path) {
+  playMovementAnimation(unitId, path, { silent = false } = {}) {
     if (!Array.isArray(path) || path.length < 2) {
       return Promise.resolve();
     }
@@ -1035,6 +1035,7 @@ export class GameRenderer {
         duration: (path.length - 1) * 240,
         segmentDuration: 240,
         lastStepIndex: -1,
+        silent,
         resolve
       });
       this.ensureAnimationLoop();
@@ -1097,7 +1098,8 @@ export class GameRenderer {
       unitId: effect.unitId,
       stepIndex: segmentIndex,
       from: path[segmentIndex],
-      to: path[segmentIndex + 1]
+      to: path[segmentIndex + 1],
+      silent: Boolean(effect.silent)
     });
   }
 

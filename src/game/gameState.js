@@ -1508,7 +1508,8 @@ export class RaidGameState {
         ownerName: player.name,
         position: deathPosition,
         items: corpseItems,
-        opened: false
+        opened: false,
+        openedByPlayerIds: []
       });
     }
 
@@ -1558,7 +1559,11 @@ export class RaidGameState {
     }
 
     const corpseBag = this.getCorpseBagAtTile(tile);
-    this.player.stamina = Math.max(0, this.player.stamina - 1);
+    corpseBag.openedByPlayerIds = Array.isArray(corpseBag.openedByPlayerIds) ? corpseBag.openedByPlayerIds : [];
+    if (!corpseBag.openedByPlayerIds.includes(this.player.id)) {
+      this.player.stamina = Math.max(0, this.player.stamina - 1);
+      corpseBag.openedByPlayerIds.push(this.player.id);
+    }
     corpseBag.opened = true;
     this.raidLog.unshift(`${this.player.name} opened ${corpseBag.ownerName}'s corpse bag`);
     return corpseBag;
