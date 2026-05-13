@@ -255,7 +255,7 @@ const RANK_TIERS = [
   { label: "레전드", badge: "L", min: 2500 }
 ];
 const PRESENCE_HEARTBEAT_MS = 4000;
-const RECONNECT_GRACE_MS = 90000;
+const RECONNECT_GRACE_MS = 5 * 60 * 1000;
 const LOBBY_CHAT_ROOM_ID = "global_lobby";
 let roomSyncChannel = null;
 let gameServerSocket = null;
@@ -4440,7 +4440,9 @@ function handleRoomActionResult(message) {
   writeJsonStorage(ROOM_STORAGE_KEY, roomStoreCache);
   if (!gameStarted) {
     applyRoomMapPackage(room, { silent: true });
-    showLobbyStep("room");
+    if (room.status !== "inProgress") {
+      showLobbyStep("room");
+    }
   }
   if (comPlayerCount) {
     comPlayerCount.value = String(room.comCount ?? 0);
@@ -4457,7 +4459,8 @@ function handleRoomActionResult(message) {
     slotLoadout: "장비 설정을 갱신했습니다.",
     setMap: `${room.mapPackage?.name ?? "맵"}을 방에 설정했습니다.`,
     setStatus: room.status === "inProgress" ? "게임 시작 상태를 서버에 반영했습니다." : "방 상태를 갱신했습니다.",
-    heartbeat: ""
+    heartbeat: "",
+    reconnectRoom: ""
   };
 
   if (statusMessages[message.action]) {
@@ -4507,7 +4510,8 @@ function updateLocalPresence() {
     return;
   }
 
-  if (sendRoomAction("heartbeat", { roomId: room.id })) {
+  const action = gameStarted || room.status === "inProgress" ? "reconnectRoom" : "heartbeat";
+  if (sendRoomAction(action, { roomId: room.id })) {
     return;
   }
 
@@ -4637,6 +4641,46 @@ function convertDisconnectedStatePlayersToAi(room) {
   }
 }
 
+function restoreReconnectedStatePlayers(room) {
+  if (!gameStarted || !state?.players || !isLocalHost()) {
+    return false;
+  }
+
+  const playerSlots = getRoomSlots(room).filter((slot) => slot.type === "player" && slot.playerId);
+  let restored = false;
+
+  playerSlots.forEach((slot) => {
+    const expectedName = slot.nickname ?? "";
+    const player = state.players.find((entry) => (
+      entry.controllerId === slot.playerId
+      || entry.id === slot.playerId
+      || stripComSuffix(entry.name) === expectedName
+    ));
+    if (!player || (player.controllerId === slot.playerId && !player.isAi)) {
+      return;
+    }
+
+    player.isAi = false;
+    player.controllerId = slot.playerId;
+    player.aiProfile = null;
+    player.name = expectedName || stripComSuffix(player.name);
+    restored = true;
+  });
+
+  if (restored) {
+    actionLog.textContent = "재접속한 플레이어가 조작권을 회복했습니다.";
+    renderer?.render();
+    updateUi({ skipSnapshotBroadcast: true });
+    broadcastGameSnapshot("playerReconnected");
+  }
+
+  return restored;
+}
+
+function stripComSuffix(name = "") {
+  return String(name).replace(/\s+\(COM\)$/u, "");
+}
+
 function broadcastRoomStoreChanged(reason = "roomUpdate", rooms = getStoredRooms()) {
   const payload = {
     type: "roomsChanged",
@@ -4710,6 +4754,7 @@ function handleRoomStoreChanged(reason = "sync", syncedRooms = null) {
     activeRoom = mergeRoomWithLocalMapPackage(activeRoom);
     if (isLocalHost()) {
       reconcileDisconnectedRoom(activeRoom);
+      restoreReconnectedStatePlayers(activeRoom);
     }
     cacheRoomMapPackage(activeRoom.mapPackage);
     lobbySession.currentRoom = activeRoom;
@@ -4744,7 +4789,8 @@ async function handleRemoteGameStart(room) {
     return;
   }
 
-    await handleStartGame({ remoteStart: true });
+  sendRoomAction("reconnectRoom", { roomId: room.id });
+  await handleStartGame({ remoteStart: true });
   if (queuedRemoteGameSnapshot?.roomId === room.id) {
     const queuedSnapshot = queuedRemoteGameSnapshot;
     queuedRemoteGameSnapshot = null;

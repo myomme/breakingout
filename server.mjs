@@ -15,6 +15,7 @@ const chatMessagesByRoom = new Map();
 const LOBBY_CHAT_ROOM_ID = "global_lobby";
 const ROOM_TTL_MS = 12 * 60 * 60 * 1000;
 const ROOM_PRESENCE_TTL_MS = 2 * 60 * 1000;
+const ROOM_RECONNECT_GRACE_MS = 5 * 60 * 1000;
 const MAX_CHAT_MESSAGES = 80;
 const ACCOUNT_DB_PATH = process.env.ACCOUNT_DB_PATH
   ? path.resolve(process.env.ACCOUNT_DB_PATH)
@@ -133,6 +134,7 @@ server.on("upgrade", (request, socket) => {
   const client = {
     socket,
     id: crypto.randomUUID(),
+    playerId: null,
     buffer: Buffer.alloc(0),
     fragments: [],
     alive: true
@@ -144,8 +146,14 @@ server.on("upgrade", (request, socket) => {
     client.buffer = Buffer.concat([client.buffer, chunk]);
     parseFrames(client);
   });
-  socket.on("close", () => clients.delete(client));
-  socket.on("error", () => clients.delete(client));
+  socket.on("close", () => {
+    markClientDisconnected(client);
+    clients.delete(client);
+  });
+  socket.on("error", () => {
+    markClientDisconnected(client);
+    clients.delete(client);
+  });
 });
 
 function parseFrames(client) {
@@ -487,6 +495,29 @@ function removeAccountFromRooms(accountId) {
   broadcastRooms("adminDeleteAccount");
 }
 
+function markClientDisconnected(client) {
+  const playerId = client?.playerId;
+  if (!playerId) return;
+
+  let changed = false;
+  rooms.forEach((room) => {
+    room.slots = normalizeServerSlots(room.slots);
+    const slot = room.slots.find((entry) => entry.type === "player" && entry.playerId === playerId);
+    if (!slot) return;
+    if (slot.connected === false && slot.disconnectedAt) return;
+
+    slot.connected = false;
+    slot.disconnectedAt = Date.now();
+    room.updatedAt = Date.now();
+    syncServerPlayersFromSlots(room);
+    changed = true;
+  });
+
+  if (changed) {
+    broadcastRooms("playerDisconnected");
+  }
+}
+
 function handleLeaderboardRequest(response) {
   const entries = [...accounts.values()]
     .map((account) => createPublicLeaderboardEntry(normalizeAccount(account, account.accountId, account.nickname)))
@@ -557,6 +588,9 @@ function sanitizeAccountForAdmin(account) {
 
 function handleMessage(client, message) {
   if (!message?.type) return;
+  if (message.sourceId) {
+    client.playerId = message.sourceId;
+  }
 
   if (message.type === "getRooms") {
     pruneRooms();
@@ -1265,6 +1299,9 @@ function handleRoomAction(client, message) {
       case "heartbeat":
         result = touchServerPresence(payload, playerId);
         break;
+      case "reconnectRoom":
+        result = reconnectServerRoom(payload, playerId);
+        break;
       default:
         result = { ok: false, message: "Unknown room action" };
         break;
@@ -1561,7 +1598,11 @@ function touchServerPresence(payload, playerId) {
   const room = findRoom(payload.roomId);
   if (!room) return { ok: false, message: "Room not found" };
   room.slots = normalizeServerSlots(room.slots);
-  const slot = room.slots.find((entry) => entry.type === "player" && entry.playerId === playerId);
+  let slot = room.slots.find((entry) => entry.type === "player" && entry.playerId === playerId);
+  if (!slot && room.status === "inProgress") {
+    reconnectTakeoverSlot(room, playerId);
+    slot = room.slots.find((entry) => entry.type === "player" && entry.playerId === playerId);
+  }
   if (!slot) return { ok: false, message: "Player not in room" };
   slot.connected = true;
   slot.lastSeen = Date.now();
@@ -1569,6 +1610,47 @@ function touchServerPresence(payload, playerId) {
   room.updatedAt = Date.now();
   syncServerPlayersFromSlots(room);
   return { ok: true, room, message: "Presence updated" };
+}
+
+function reconnectServerRoom(payload, playerId) {
+  const room = findRoom(payload.roomId);
+  if (!room) return { ok: false, message: "Room not found" };
+  room.slots = normalizeServerSlots(room.slots);
+  reconnectTakeoverSlot(room, playerId);
+  const slot = room.slots.find((entry) => entry.type === "player" && entry.playerId === playerId);
+  if (!slot) return { ok: false, message: "Reconnect slot not found" };
+  slot.connected = true;
+  slot.lastSeen = Date.now();
+  slot.disconnectedAt = null;
+  room.updatedAt = Date.now();
+  syncServerPlayersFromSlots(room);
+  return { ok: true, room, message: "Reconnected" };
+}
+
+function reconnectTakeoverSlot(room, playerId) {
+  const index = room.slots.findIndex((slot) => slot.type === "computer" && slot.takeoverFromPlayerId === playerId);
+  if (index < 0) return false;
+
+  const slot = room.slots[index];
+  const account = getAccountRecord(playerId, slot.takeoverName ?? "Player");
+  room.slots[index] = {
+    slotIndex: index,
+    type: "player",
+    playerId,
+    nickname: slot.takeoverName ?? account.nickname ?? "Player",
+    weaponId: slot.weaponId ?? "AR",
+    armorId: slot.armorId ?? "lightSet",
+    cosmetics: account.cosmetics ?? null,
+    ready: true,
+    connected: true,
+    lastSeen: Date.now(),
+    disconnectedAt: null,
+    reconnectedAt: Date.now()
+  };
+  if (!room.hostId) {
+    room.hostId = playerId;
+  }
+  return true;
 }
 
 function mergeRooms(existingRooms = [], incomingRooms = []) {
@@ -1762,7 +1844,7 @@ function pruneRooms() {
     if (now - createdAt <= ROOM_PRESENCE_TTL_MS) {
       return playerSlots.length > 0;
     }
-    const hasRecentPlayer = playerSlots.some((slot) => now - (slot.lastSeen ?? room.updatedAt ?? createdAt) <= ROOM_PRESENCE_TTL_MS);
+    const hasRecentPlayer = playerSlots.some((slot) => now - (slot.lastSeen ?? room.updatedAt ?? createdAt) <= ROOM_RECONNECT_GRACE_MS);
     return playerSlots.length > 0 && hasRecentPlayer && now - createdAt < ROOM_TTL_MS;
   });
 
