@@ -574,6 +574,10 @@ export class RaidGameState {
       weapon.attackDice += 1;
     }
 
+    if (player.nextAttackDicePenalty > 0) {
+      weapon.attackDice = Math.max(1, weapon.attackDice - player.nextAttackDicePenalty);
+    }
+
     return weapon;
   }
 
@@ -860,6 +864,10 @@ export class RaidGameState {
     const weapon = this.selectedWeapon;
     const distance = hexDistance(this.player.position, enemy.position);
     const roll = this.rollWeaponDice(weapon.attackDice);
+    if (this.player.nextAttackDicePenalty > 0) {
+      this.player.nextAttackDicePenalty = 0;
+      this.player.heldEventCards = this.player.heldEventCards.filter((entry) => entry.card?.effect?.type !== "nextAttackDicePenalty");
+    }
     const targetTile = this.gameMap.tilesByKey.get(tileKey(enemy.position));
     const weaponHits = this.applyWeaponPassives(roll.filter((face) => face.bodyPart), weapon, distance);
     const coverHits = this.applyCoverToHits(weaponHits, targetTile);
@@ -1318,6 +1326,22 @@ export class RaidGameState {
         this.rememberHeldEventCard(player, card, "phase");
         this.raidLog.unshift("Double loot active this phase");
         break;
+      case "revealPlayersInRadiusThisPhase":
+        player.playerRevealPhase = this.phase;
+        player.playerRevealRadius = effect.radius ?? 7;
+        this.rememberHeldEventCard(player, card, "phase");
+        this.raidLog.unshift(`Headset active: player positions within ${effect.radius ?? 7} tiles`);
+        break;
+      case "nextAttackDicePenalty":
+        player.nextAttackDicePenalty = Math.max(player.nextAttackDicePenalty ?? 0, effect.value ?? 1);
+        this.rememberHeldEventCard(player, card, "attack");
+        this.raidLog.unshift(`Weapon jam: next attack dice -${effect.value ?? 1}`);
+        break;
+      case "insureRaidItem":
+        player.insuranceUntilRaid = true;
+        this.rememberHeldEventCard(player, card, "raid");
+        this.raidLog.unshift("Insurance active: one item can be preserved on failed extraction");
+        break;
       default:
         this.raidLog.unshift(`${card.name} effect is not handled: ${effect.type}`);
         break;
@@ -1765,9 +1789,13 @@ export class RaidGameState {
     const forfeitedPlayers = this.players.filter((player) => !player.extractedThisRaid && player.bagValue > 0);
     forfeitedPlayers.forEach((player) => {
       const lostValue = player.bagValue;
-      player.bag = [];
-      player.bagValue = 0;
-      this.raidLog.unshift(`${player.name} failed to extract. Raid loot lost: ${lostValue}`);
+      const preservedItem = this.consumeRaidInsurance(player);
+      player.bag = preservedItem ? [preservedItem] : [];
+      player.bagValue = preservedItem?.value ?? 0;
+      if (preservedItem) {
+        this.raidLog.unshift(`${player.name} insurance preserved ${preservedItem.name}`);
+      }
+      this.raidLog.unshift(`${player.name} failed to extract. Raid loot lost: ${Math.max(0, lostValue - (preservedItem?.value ?? 0))}`);
     });
 
     this.raidLog.unshift(
@@ -1781,10 +1809,24 @@ export class RaidGameState {
     this.raidEnded = true;
     this.raidResult = "failed";
     this.players.forEach((player) => {
-      player.bag = [];
-      player.bagValue = 0;
+      const preservedItem = this.consumeRaidInsurance(player);
+      player.bag = preservedItem ? [preservedItem] : [];
+      player.bagValue = preservedItem?.value ?? 0;
+      if (preservedItem) {
+        this.raidLog.unshift(`${player.name} insurance preserved ${preservedItem.name}`);
+      }
     });
     this.raidLog.unshift("Raid failed. Acquired items were lost.");
+  }
+
+  consumeRaidInsurance(player) {
+    if (!player?.insuranceUntilRaid || !Array.isArray(player.bag) || player.bag.length === 0) {
+      return null;
+    }
+
+    player.insuranceUntilRaid = false;
+    player.heldEventCards = player.heldEventCards.filter((entry) => entry.card?.effect?.type !== "insureRaidItem");
+    return [...player.bag].sort((a, b) => Number(b.value ?? 0) - Number(a.value ?? 0))[0] ?? null;
   }
 
   startNextRaid() {

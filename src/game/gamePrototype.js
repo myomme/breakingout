@@ -756,7 +756,7 @@ const WEAPON_CARD_IMAGES = {
 };
 
 const EVENT_CARD_IMAGES = Object.fromEntries(
-  Array.from({ length: 16 }, (_, index) => {
+  Array.from({ length: 19 }, (_, index) => {
     const number = String(index + 1).padStart(2, "0");
     return [index + 1, new URL(`../../assets/cards/eventcards/${number}.png`, import.meta.url).href];
   })
@@ -10046,6 +10046,12 @@ function eventEffectLabel(card) {
       return `AR/SMG attack dice +${effect.diceBonus} until raid end`;
     case "doubleLootThisPhase":
       return `loot ${effect.count ?? 2} items this phase`;
+    case "revealPlayersInRadiusThisPhase":
+      return `reveal player positions within ${effect.radius ?? 7} tiles this phase`;
+    case "nextAttackDicePenalty":
+      return `next attack dice -${effect.value ?? 1}`;
+    case "insureRaidItem":
+      return "keep one item if this raid extraction fails";
     default:
       return effect.type;
   }

@@ -1,4 +1,4 @@
-import { getHexCorners, hexToPixel, pixelToHex, tileKey } from "../core/hex.js";
+import { getHexCorners, hexDistance, hexToPixel, pixelToHex, tileKey } from "../core/hex.js";
 import { drawTextureInPolygon, getTileTextureLayers, loadTileTextures } from "../render/tileTextures.js";
 
 export class GameRenderer {
@@ -673,7 +673,9 @@ export class GameRenderer {
       if (!this.state.isPlayerActive(player)) {
         return;
       }
-      if (!spectatorVision && player.id !== viewer?.id && !visibleKeys.has(tileKey(player.position))) {
+      const revealedByEvent = viewer?.playerRevealPhase === this.state.phase
+        && hexDistance(viewer.position, player.position) <= (viewer.playerRevealRadius ?? 0);
+      if (!spectatorVision && player.id !== viewer?.id && !visibleKeys.has(tileKey(player.position)) && !revealedByEvent) {
         return;
       }
 

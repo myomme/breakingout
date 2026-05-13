@@ -177,5 +177,38 @@
       "type": "doubleLootThisPhase",
       "count": 2
     }
+  },
+  {
+    "id": "headset_on",
+    "number": 17,
+    "name": "헤드셋 착용!",
+    "description": "근처에서 들리는 발소리를 포착했습니다. 이번 페이즈 동안 반경 7칸 내의 플레이어 위치를 확인 가능.",
+    "timing": "thisPhase",
+    "effect": {
+      "type": "revealPlayersInRadiusThisPhase",
+      "radius": 7
+    }
+  },
+  {
+    "id": "weapon_jammed",
+    "number": 18,
+    "name": "탄 걸렸는데?",
+    "description": "탄창 내부에 급탄 불량이 발생했습니다. 다음 공격 1회 동안 공격주사위 1 감소.",
+    "timing": "held",
+    "effect": {
+      "type": "nextAttackDicePenalty",
+      "value": 1
+    }
+  },
+  {
+    "id": "insured_gear",
+    "number": 19,
+    "name": "보험 들었나?",
+    "description": "중요 장비 하나에 보험을 적용합니다. 레이드 탈출 실패 시 선택한 아이템 1개 보존 가능.",
+    "timing": "held",
+    "effect": {
+      "type": "insureRaidItem",
+      "count": 1
+    }
   }
 ]

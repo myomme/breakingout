@@ -6032,6 +6032,11 @@ dd {
   pointer-events: none;
 }
 
+.admin-notice-overlay[hidden],
+.support-report-overlay[hidden] {
+  display: none !important;
+}
+
 .admin-notice-panel {
   width: min(560px, calc(100vw - 28px));
   border: 1px solid rgba(255, 218, 122, 0.48);
