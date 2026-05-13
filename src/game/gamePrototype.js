@@ -3576,6 +3576,7 @@ function createDefaultAccountRecord() {
       wins: 0,
       kills: 0,
       deaths: 0,
+      abandons: 0,
       experience: 0,
       rankScore: 0,
       bestGameValue: 0,
@@ -6518,7 +6519,7 @@ function renderCosmeticItem(item, account, context) {
 
 function renderCosmeticPreviewIcon(item) {
   if (item.category === "tokenSkin") {
-    return `<span class="preview-token preview-token--shop ${getCosmeticClass(item.id, "preview-token--")}">1</span>`;
+    return renderTokenSkinPreviewSvg(item, { compact: true });
   }
 
   return `<span>${escapeHtml(item.preview ?? item.categoryLabel)}</span>`;
@@ -6581,7 +6582,7 @@ function openPurchaseConfirm(itemId) {
   purchaseConfirmBody.innerHTML = `
     <article class="purchase-confirm-item">
       <div class="cosmetic-shop-preview ${getCosmeticClass(item.id, "cosmetic-preview--")}">
-        <span>${escapeHtml(item.preview ?? item.categoryLabel)}</span>
+        ${renderCosmeticPreviewIcon(item)}
       </div>
       <div>
         <span>${escapeHtml(item.categoryLabel)} / ${escapeHtml(item.rarity ?? "Standard")}</span>
@@ -6675,7 +6676,7 @@ function renderCosmeticPreviewScene(item, account) {
   if (item.category === "tokenSkin") {
     return `
       <div class="preview-token-field">
-        <span class="preview-token preview-token--large ${getCosmeticClass(item.id, "preview-token--")}">1</span>
+        ${renderTokenSkinPreviewSvg(item, { compact: false })}
       </div>
     `;
   }
@@ -6688,6 +6689,182 @@ function renderCosmeticPreviewScene(item, account) {
     </article>
   `;
 }
+
+function renderTokenSkinPreviewSvg(item, { compact = false } = {}) {
+  const variant = TOKEN_SKIN_PREVIEW_VARIANTS[item.id];
+  if (!variant) {
+    return `<span class="preview-token ${compact ? "preview-token--shop" : "preview-token--large"} ${getCosmeticClass(item.id, "preview-token--")}">1</span>`;
+  }
+  const uid = `preview-${item.id}-${compact ? "shop" : "large"}`;
+
+  return `
+    <svg class="preview-token-svg ${compact ? "preview-token-svg--shop" : "preview-token-svg--large"}" viewBox="0 0 72 72" role="img" aria-label="${escapeHtml(item.label)}">
+      <defs>
+        <radialGradient id="${uid}-shell" cx="38%" cy="28%" r="72%">
+          <stop offset="0%" stop-color="${variant.top}"/>
+          <stop offset="58%" stop-color="${variant.mid}"/>
+          <stop offset="100%" stop-color="${variant.low}"/>
+        </radialGradient>
+        <linearGradient id="${uid}-slash" x1="12" y1="12" x2="60" y2="60">
+          <stop offset="0%" stop-color="${variant.accent}" stop-opacity="0.9"/>
+          <stop offset="100%" stop-color="#ffffff" stop-opacity="0.08"/>
+        </linearGradient>
+        <pattern id="${uid}-texture" width="8" height="8" patternUnits="userSpaceOnUse">
+          ${variant.pattern}
+        </pattern>
+        <clipPath id="${uid}-clip">
+          <circle cx="36" cy="36" r="31"/>
+        </clipPath>
+      </defs>
+      <circle cx="36" cy="36" r="34" fill="#050707"/>
+      <circle cx="36" cy="36" r="32" fill="url(#${uid}-shell)" stroke="rgba(255,255,255,0.18)" stroke-width="1.2"/>
+      <circle cx="36" cy="36" r="31" fill="url(#${uid}-texture)" opacity="${variant.textureOpacity}"/>
+      <g clip-path="url(#${uid}-clip)">
+        ${variant.body(uid)}
+      </g>
+      ${variant.ring()}
+      <circle cx="36" cy="36" r="13.5" fill="rgba(5,8,8,0.74)" stroke="${variant.accent}" stroke-opacity="0.72" stroke-width="1.4"/>
+      <text x="36" y="40.8" text-anchor="middle" fill="#f7f8ee" font-size="13" font-weight="900" font-family="Arial, sans-serif">1</text>
+    </svg>
+  `;
+}
+
+const TOKEN_SKIN_PREVIEW_VARIANTS = {
+  token_standard_issue: {
+    accent: "#dce5d8",
+    top: "#5b655d",
+    mid: "#2e3732",
+    low: "#121817",
+    textureOpacity: 0.22,
+    pattern: `<path d="M0 7 L8 1" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>`,
+    body: (uid) => `
+      <path d="M18 48 L54 24 L58 30 L22 54 Z" fill="url(#${uid}-slash)" opacity="0.34"/>
+      <path d="M18 22 H54" stroke="rgba(255,255,255,0.18)" stroke-width="2"/>
+      <path d="M22 50 H50" stroke="#dce5d8" stroke-opacity="0.52" stroke-width="2"/>
+    `,
+    ring: () => `
+      <circle cx="36" cy="36" r="27" fill="none" stroke="#dce5d8" stroke-opacity="0.42" stroke-width="2"/>
+      <path d="M36 7 V14 M36 58 V65 M7 36 H14 M58 36 H65" stroke="rgba(255,255,255,0.48)" stroke-width="2" stroke-linecap="round"/>
+    `
+  },
+  token_recon: {
+    accent: "#9dc6a6",
+    top: "#405144",
+    mid: "#203129",
+    low: "#0d1412",
+    textureOpacity: 0.28,
+    pattern: `<circle cx="2" cy="2" r="0.8" fill="rgba(188,232,190,0.18)"/>`,
+    body: () => `
+      <circle cx="36" cy="36" r="22" fill="none" stroke="#9dc6a6" stroke-opacity="0.28" stroke-dasharray="4 4"/>
+      <path d="M20 36 H29 M43 36 H52 M36 20 V29 M36 43 V52" stroke="#9dc6a6" stroke-width="1.6" stroke-linecap="round"/>
+      <circle cx="52" cy="22" r="3" fill="#9dc6a6" opacity="0.72"/>
+    `,
+    ring: () => `
+      <circle cx="36" cy="36" r="29" fill="none" stroke="rgba(255,255,255,0.22)" stroke-width="1"/>
+      <circle cx="36" cy="36" r="25" fill="none" stroke="#9dc6a6" stroke-opacity="0.44" stroke-width="1.5" stroke-dasharray="12 5"/>
+    `
+  },
+  token_thermal: {
+    accent: "#f0a35c",
+    top: "#5b4132",
+    mid: "#281e1a",
+    low: "#100d0c",
+    textureOpacity: 0.18,
+    pattern: `<rect x="0" y="0" width="8" height="2" fill="rgba(240,163,92,0.13)"/>`,
+    body: () => `
+      <path d="M12 50 C24 42 25 30 38 27 C49 24 55 17 62 12 V58 H12 Z" fill="#f0a35c" opacity="0.16"/>
+      <path d="M15 46 H57 M18 39 H54 M21 32 H51 M24 25 H48" stroke="rgba(255,255,255,0.12)" stroke-width="1.4"/>
+      <circle cx="48" cy="24" r="5" fill="#f0a35c" opacity="0.5"/>
+    `,
+    ring: () => `
+      <path d="M9 36 A27 27 0 0 1 36 9" fill="none" stroke="#f0a35c" stroke-width="3" stroke-linecap="round"/>
+      <path d="M63 36 A27 27 0 0 1 36 63" fill="none" stroke="#9c2f26" stroke-width="3" stroke-linecap="round"/>
+    `
+  },
+  token_hazmat: {
+    accent: "#d4c45b",
+    top: "#565238",
+    mid: "#2c2b1d",
+    low: "#12120c",
+    textureOpacity: 0.24,
+    pattern: `<path d="M0 0 L8 8 M8 0 L0 8" stroke="rgba(212,196,91,0.1)" stroke-width="1"/>`,
+    body: () => `
+      <path d="M36 13 L57 50 H15 Z" fill="#d4c45b" opacity="0.15" stroke="#d4c45b" stroke-opacity="0.44" stroke-width="1.5"/>
+      <circle cx="36" cy="38" r="9" fill="rgba(0,0,0,0.36)" stroke="#d4c45b" stroke-opacity="0.55"/>
+      <path d="M36 29 V47 M27 43 L45 33 M27 33 L45 43" stroke="#d4c45b" stroke-width="1.2"/>
+    `,
+    ring: () => `<circle cx="36" cy="36" r="28" fill="none" stroke="#d4c45b" stroke-width="4" stroke-dasharray="9 6" opacity="0.72"/>`
+  },
+  token_jammer: {
+    accent: "#78a9b7",
+    top: "#334b52",
+    mid: "#1b282c",
+    low: "#0b1113",
+    textureOpacity: 0.3,
+    pattern: `<path d="M0 4 H8" stroke="rgba(120,169,183,0.2)" stroke-width="1"/><path d="M4 0 V8" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>`,
+    body: () => `
+      <path d="M18 30 H54 M16 38 H48 M24 46 H57" stroke="#78a9b7" stroke-opacity="0.62" stroke-width="2" stroke-linecap="round"/>
+      <path d="M27 20 C40 27 42 45 55 52" fill="none" stroke="rgba(255,255,255,0.18)" stroke-width="2"/>
+      <rect x="18" y="18" width="10" height="9" rx="2" fill="#78a9b7" opacity="0.5"/>
+    `,
+    ring: () => `
+      <path d="M12 23 A28 28 0 0 1 60 23" fill="none" stroke="#78a9b7" stroke-width="2" stroke-dasharray="3 5"/>
+      <path d="M10 49 A30 30 0 0 0 62 49" fill="none" stroke="rgba(255,255,255,0.2)" stroke-width="2"/>
+    `
+  },
+  token_black_cell: {
+    accent: "#7f8790",
+    top: "#282c31",
+    mid: "#111417",
+    low: "#040505",
+    textureOpacity: 0.34,
+    pattern: `<rect x="0" y="0" width="4" height="4" fill="rgba(255,255,255,0.04)"/><rect x="4" y="4" width="4" height="4" fill="rgba(255,255,255,0.035)"/>`,
+    body: () => `
+      <path d="M16 20 L56 16 L52 56 L20 52 Z" fill="rgba(255,255,255,0.035)" stroke="#7f8790" stroke-opacity="0.26"/>
+      <path d="M23 26 H49 V46 H23 Z" fill="rgba(0,0,0,0.28)" stroke="rgba(255,255,255,0.12)"/>
+      <path d="M23 46 L49 26" stroke="#7f8790" stroke-opacity="0.35" stroke-width="2"/>
+    `,
+    ring: () => `
+      <circle cx="36" cy="36" r="28" fill="none" stroke="rgba(255,255,255,0.14)" stroke-width="1"/>
+      <path d="M18 12 A29 29 0 0 1 54 12 M18 60 A29 29 0 0 0 54 60" fill="none" stroke="#7f8790" stroke-width="2"/>
+    `
+  },
+  token_contraband: {
+    accent: "#b9854b",
+    top: "#4f3929",
+    mid: "#251a14",
+    low: "#100b09",
+    textureOpacity: 0.32,
+    pattern: `<path d="M-2 7 L7 -2 M2 10 L10 2" stroke="rgba(185,133,75,0.18)" stroke-width="1.2"/>`,
+    body: () => `
+      <path d="M13 44 L59 22 L61 29 L15 51 Z" fill="#b9854b" opacity="0.26"/>
+      <path d="M17 47 L57 28" stroke="rgba(0,0,0,0.36)" stroke-width="2"/>
+      <path d="M23 19 H49" stroke="rgba(255,255,255,0.14)" stroke-width="2"/>
+      <path d="M25 56 H47" stroke="#b9854b" stroke-width="2" stroke-dasharray="3 3"/>
+    `,
+    ring: () => `
+      <circle cx="36" cy="36" r="27" fill="none" stroke="#b9854b" stroke-opacity="0.48" stroke-width="3" stroke-dasharray="18 8"/>
+      <path d="M12 36 H20 M52 36 H60" stroke="rgba(255,255,255,0.34)" stroke-width="2"/>
+    `
+  },
+  token_extraction_mark: {
+    accent: "#b8f36e",
+    top: "#4c6840",
+    mid: "#243522",
+    low: "#0d130d",
+    textureOpacity: 0.24,
+    pattern: `<path d="M4 0 V8 M0 4 H8" stroke="rgba(184,243,110,0.12)" stroke-width="1"/>`,
+    body: () => `
+      <path d="M36 13 L55 31 L48 31 L48 52 H24 V31 H17 Z" fill="#b8f36e" opacity="0.16" stroke="#b8f36e" stroke-opacity="0.48" stroke-width="1.4"/>
+      <path d="M28 45 H44 M32 38 H40" stroke="#b8f36e" stroke-width="2" stroke-linecap="round"/>
+      <circle cx="36" cy="25" r="3.5" fill="#b8f36e" opacity="0.82"/>
+    `,
+    ring: () => `
+      <circle cx="36" cy="36" r="29" fill="none" stroke="#b8f36e" stroke-width="2" stroke-dasharray="6 4"/>
+      <path d="M36 5 L41 12 H31 Z M36 67 L31 60 H41 Z" fill="#b8f36e" opacity="0.68"/>
+    `
+  }
+};
 
 function openPublicProfile(accountId) {
   ensurePublicProfileUi();
@@ -7152,6 +7329,16 @@ function leaveCurrentGameToAi() {
 
   const nickname = lobbySession.nickname || getUiPlayer()?.name || "플레이어";
   const roomId = lobbySession.currentRoom.id;
+  const penalty = getLeaveGamePenalty();
+  const confirmMessage = penalty.applies
+    ? `게임에서 정말 나가시겠습니까?\n\n현재 Raid ${state.raid}, Phase ${state.phase}라 중도 이탈로 기록됩니다.\n패널티: 전적 게임 수 +1, 이탈 +1, RP -${penalty.rankScoreLoss}`
+    : "게임에서 정말 나가시겠습니까?\n\n아직 초반이라 전적 패널티는 적용되지 않고 COM이 대신 진행합니다.";
+
+  if (!window.confirm(confirmMessage)) {
+    return;
+  }
+
+  applyLeaveGamePenalty(penalty);
 
   if (isLocalHost()) {
     convertControllerToAi(lobbySession.localPlayerId, nickname);
@@ -7165,6 +7352,12 @@ function leaveCurrentGameToAi() {
   clearPendingTileAction();
   gameStarted = false;
   gameStarting = false;
+  if (floatingLeaveGameButton) {
+    floatingLeaveGameButton.hidden = true;
+  }
+  if (floatingEndTurnButton) {
+    floatingEndTurnButton.hidden = true;
+  }
   forgetCurrentRoom();
   lobbySession.currentRoom = null;
   if (startOverlay) {
@@ -7173,6 +7366,60 @@ function leaveCurrentGameToAi() {
   renderLobby();
   showLobbyStep("lobby");
   setStartStatus(`${nickname}님이 게임에서 나갔습니다. COM이 대신 진행합니다.`);
+}
+
+function getLeaveGamePenalty() {
+  const raid = Number(state?.raid ?? 1);
+  const phase = Number(state?.phase ?? 1);
+  const applies = raid > 1 || phase >= 3;
+  const rankScoreLoss = applies ? Math.min(40, 10 + Math.max(0, raid - 1) * 8 + Math.max(0, phase - 3) * 2) : 0;
+
+  return { applies, raid, phase, rankScoreLoss };
+}
+
+function applyLeaveGamePenalty(penalty = getLeaveGamePenalty()) {
+  if (!penalty.applies || !lobbySession.localPlayerId) {
+    return;
+  }
+
+  const account = readAccountRecord();
+  const resultKey = `${lobbySession.currentRoom?.id ?? "solo"}:${lobbySession.localPlayerId}:abandon:${penalty.raid}:${penalty.phase}`;
+  if (appliedAccountResultKeys.has(resultKey) || account.appliedGameResults?.includes(resultKey)) {
+    return;
+  }
+
+  appliedAccountResultKeys.add(resultKey);
+  account.stats.gamesPlayed += 1;
+  account.stats.deaths += 1;
+  account.stats.abandons = Math.max(0, Number(account.stats.abandons ?? 0) + 1);
+  account.stats.rankScore = Math.max(0, Number(account.stats.rankScore ?? 0) - penalty.rankScoreLoss);
+  account.lastGame = {
+    at: Date.now(),
+    roomId: lobbySession.currentRoom?.id ?? null,
+    mapId: state?.gameMap?.mapId ?? null,
+    value: 0,
+    winner: false,
+    kills: 0,
+    dead: true,
+    abandoned: true,
+    raid: penalty.raid,
+    phase: penalty.phase
+  };
+  account.appliedGameResults = [...(account.appliedGameResults ?? []), resultKey].slice(-20);
+  writeAccountRecord(account);
+  sendServerGameResult({
+    resultKey,
+    value: 0,
+    winner: false,
+    kills: 0,
+    dead: true,
+    abandoned: true,
+    rankScoreLoss: penalty.rankScoreLoss,
+    raid: penalty.raid,
+    phase: penalty.phase,
+    mapId: state?.gameMap?.mapId ?? null
+  });
+  renderAccountSummary();
 }
 
 function convertControllerToAi(controllerId, nickname = "플레이어") {
@@ -8857,6 +9104,12 @@ async function restartGameFromSummary() {
   }
   gameStarted = false;
   gameStarting = false;
+  if (floatingLeaveGameButton) {
+    floatingLeaveGameButton.hidden = true;
+  }
+  if (floatingEndTurnButton) {
+    floatingEndTurnButton.hidden = true;
+  }
   resetGlobalVoiceTracking();
   if (lobbySession.currentRoom) {
     setCurrentRoomStatus("waiting");
@@ -8876,11 +9129,18 @@ async function restartGameFromSummary() {
 function returnToLobbyFromGame() {
   stopRaidAutoAdvance();
   closeCorpseLoot("closed");
+  const roomId = lobbySession.currentRoom?.id ?? null;
   gameStarted = false;
   gameStarting = false;
+  if (floatingLeaveGameButton) {
+    floatingLeaveGameButton.hidden = true;
+  }
+  if (floatingEndTurnButton) {
+    floatingEndTurnButton.hidden = true;
+  }
   resetGlobalVoiceTracking();
-  if (lobbySession.currentRoom) {
-    setCurrentRoomStatus("waiting");
+  if (roomId) {
+    sendRoomAction("leaveRoom", { roomId });
   }
   if (raidSummaryOverlay) {
     raidSummaryOverlay.hidden = true;
@@ -8891,9 +9151,11 @@ function returnToLobbyFromGame() {
   if (startOverlay) {
     startOverlay.hidden = false;
   }
+  forgetCurrentRoom();
+  lobbySession.currentRoom = null;
   renderLobby();
-  showLobbyStep(lobbySession.currentRoom ? "room" : "lobby");
-  setStartStatus("대기방으로 돌아왔습니다. 설정을 바꾼 뒤 다시 시작할 수 있습니다.");
+  showLobbyStep("lobby");
+  setStartStatus("메인 화면으로 돌아왔습니다.");
 }
 
 function updateUi({ skipSnapshotBroadcast = false } = {}) {

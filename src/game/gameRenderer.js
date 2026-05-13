@@ -59,6 +59,10 @@ export class GameRenderer {
     this.canvas.addEventListener("pointerdown", (event) => {
       if (event.pointerType === "touch") {
         event.preventDefault();
+        if (this.touchPointers.size === 0) {
+          this.lastTouchDistance = 0;
+          this.lastTouchCenter = null;
+        }
         this.touchPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
         this.canvas.setPointerCapture(event.pointerId);
         this.updateTouchGestureState();
@@ -89,6 +93,9 @@ export class GameRenderer {
     window.addEventListener("pointerup", (event) => {
       if (event.pointerType === "touch") {
         this.touchPointers.delete(event.pointerId);
+        if (this.canvas.hasPointerCapture?.(event.pointerId)) {
+          this.canvas.releasePointerCapture(event.pointerId);
+        }
         this.updateTouchGestureState();
       }
       this.panning = false;
@@ -98,10 +105,21 @@ export class GameRenderer {
     window.addEventListener("pointercancel", (event) => {
       if (event.pointerType === "touch") {
         this.touchPointers.delete(event.pointerId);
+        if (this.canvas.hasPointerCapture?.(event.pointerId)) {
+          this.canvas.releasePointerCapture(event.pointerId);
+        }
         this.updateTouchGestureState();
       }
       this.panning = false;
       this.lastPointer = null;
+    });
+
+    this.canvas.addEventListener("lostpointercapture", (event) => {
+      if (event.pointerType !== "touch") {
+        return;
+      }
+      this.touchPointers.delete(event.pointerId);
+      this.updateTouchGestureState();
     });
 
     this.canvas.addEventListener("click", (event) => {
@@ -161,6 +179,8 @@ export class GameRenderer {
 
     if (pointers.length === 1) {
       const current = pointers[0];
+      this.lastTouchDistance = 0;
+      this.lastTouchCenter = current;
       if (previous) {
         const dx = current.x - previous.x;
         const dy = current.y - previous.y;
