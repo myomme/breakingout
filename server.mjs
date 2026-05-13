@@ -1045,6 +1045,11 @@ function handleMessage(client, message) {
 
   if (message.type === "playerCommand") {
     broadcast({ ...message, sourceClientId: client.id });
+    return;
+  }
+
+  if (message.type === "playerCommandResult") {
+    broadcast({ ...message, sourceClientId: client.id });
   }
 }
 
