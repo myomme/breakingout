@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { hexDistance, tileKey } from "./src/core/hex.js";
 import { RaidGameState } from "./src/game/gameState.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -22,6 +23,8 @@ const ROOM_RECONNECT_GRACE_MS = 5 * 60 * 1000;
 const MAX_CHAT_MESSAGES = 80;
 const MAX_SUPPORT_REPORTS = 200;
 const GAMEPLAY_HEX_SIZE = 42;
+const SERVER_AI_STEP_DELAY_MS = 650;
+const SERVER_AI_TURN_START_DELAY_MS = 900;
 const ACCOUNT_DB_PATH = process.env.ACCOUNT_DB_PATH
   ? path.resolve(process.env.ACCOUNT_DB_PATH)
   : path.join(__dirname, "data", "serverAccounts.json");
@@ -1024,6 +1027,7 @@ function handleMessage(client, message) {
     const session = gameSessions.get(message.roomId);
     if (session?.state && room?.hostId === message.sourceId && message.snapshot) {
       session.state.importSnapshot(message.snapshot);
+      scheduleServerAiTurn(room, session);
     }
     if (message.roomId) snapshots.set(message.roomId, message);
     broadcast({ ...message, sourceClientId: client.id });
@@ -1769,6 +1773,10 @@ process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);
 
 function shutdown() {
+  for (const session of gameSessions.values()) {
+    clearServerAiTimer(session);
+    clearServerRaidAdvanceTimer(session);
+  }
   for (const client of clients) {
     client.socket.end();
   }
@@ -1853,7 +1861,7 @@ function leaveServerRoom(payload, playerId) {
     if (!humans.length) {
       rooms = rooms.filter((entry) => entry.id !== room.id);
       snapshots.delete(room.id);
-      gameSessions.delete(room.id);
+      deleteGameSession(room.id);
       chatMessagesByRoom.delete(room.id);
       return { ok: true, room: null, message: "Room removed" };
     }
@@ -1875,7 +1883,7 @@ function leaveServerRoom(payload, playerId) {
   if (!room.players.length) {
     rooms = rooms.filter((entry) => entry.id !== room.id);
     snapshots.delete(room.id);
-    gameSessions.delete(room.id);
+    deleteGameSession(room.id);
     chatMessagesByRoom.delete(room.id);
     return { ok: true, room: null, message: "Room removed" };
   }
@@ -1993,7 +2001,7 @@ function setServerStatus(payload, playerId) {
   if (status === "inProgress") {
     ensureGameSession(room, { reset: true });
   } else if (status === "finished") {
-    gameSessions.delete(room.id);
+    deleteGameSession(room.id);
     snapshots.delete(room.id);
   }
   return { ok: true, room, message: "Status updated" };
@@ -2070,6 +2078,9 @@ function ensureGameSession(room, { reset = false } = {}) {
   if (existing && !reset) {
     return existing;
   }
+  if (existing && reset) {
+    deleteGameSession(room.id);
+  }
 
   const mapData = getRoomMapDataForServer(room);
   if (!mapData) {
@@ -2086,11 +2097,15 @@ function ensureGameSession(room, { reset = false } = {}) {
     roomId: room.id,
     state,
     eventSeq: 0,
+    aiTimer: null,
+    aiRunning: false,
+    raidAdvanceTimer: null,
     createdAt: Date.now(),
     updatedAt: Date.now()
   };
   gameSessions.set(room.id, session);
   publishServerSnapshot(room, session, "orderReveal", { authority: "server", type: "gameStart" });
+  scheduleServerAiTurn(room, session, SERVER_AI_TURN_START_DELAY_MS);
   return session;
 }
 
@@ -2177,6 +2192,8 @@ function handleServerPlayerCommand(client, message) {
     controllerId: message.controllerId ?? null,
     ...(result.meta ?? {})
   });
+  scheduleServerRaidAdvance(room, session);
+  scheduleServerAiTurn(room, session);
   return true;
 }
 
@@ -2283,6 +2300,9 @@ function applyServerPlayerCommand(session, message) {
     if (!result) {
       return { handled: true, ok: false, reason: "공격할 수 없습니다." };
     }
+    const attackSummary = clonePlain(state.lastAttackSummary);
+    const attackerId = attackSummary?.attackerId;
+    const targetId = attackSummary?.targetId;
     if (!state.postAttackMoveAvailable && !state.raidEnded) {
       state.endTurn();
     }
@@ -2292,11 +2312,11 @@ function applyServerPlayerCommand(session, message) {
       snapshotReason: chooseServerSnapshotReason(state, "attackReveal"),
       meta: {
         event: "player:attacked",
-        attackerId: state.lastAttackSummary?.attackerId,
-        targetId: state.lastAttackSummary?.targetId,
+        attackerId,
+        targetId,
         weaponId: result.weapon?.name ?? state.player?.weaponId,
         roll: result.roll,
-        summary: state.lastAttackSummary
+        summary: attackSummary
       }
     };
   }
@@ -2380,6 +2400,366 @@ function convertServerControllerToAi(state, controllerId, nickname = "플레이�
     player.name = player.name.includes("(COM)") ? player.name : `${player.name} (COM)`;
   });
   state.raidLog.unshift(`${nickname}님이 나갔습니다. COM이 인계합니다.`);
+}
+
+function scheduleServerAiTurn(room, session, delayMs = SERVER_AI_STEP_DELAY_MS) {
+  if (!room || !session?.state) {
+    return;
+  }
+
+  clearServerAiTimer(session);
+  if (
+    room.status !== "inProgress" ||
+    session.aiRunning ||
+    session.state.raidEnded ||
+    !session.state.player?.isAi ||
+    hasServerBlockingDiscard(session.state)
+  ) {
+    return;
+  }
+
+  session.aiTimer = setTimeout(() => {
+    session.aiTimer = null;
+    runServerAiTurn(room.id);
+  }, delayMs);
+}
+
+function scheduleServerRaidAdvance(room, session) {
+  if (!room || !session?.state || session.raidAdvanceTimer) {
+    return;
+  }
+
+  if (room.status !== "inProgress" || !session.state.raidEnded || session.state.raid >= 3) {
+    return;
+  }
+
+  session.raidAdvanceTimer = setTimeout(() => {
+    session.raidAdvanceTimer = null;
+    const activeRoom = findRoom(room.id);
+    if (!activeRoom || activeRoom.status !== "inProgress" || !session.state.raidEnded || session.state.raid >= 3) {
+      return;
+    }
+
+    if (!session.state.startNextRaid()) {
+      return;
+    }
+
+    publishServerSnapshot(activeRoom, session, "orderReveal", {
+      authority: "server",
+      event: "raid:advanced",
+      raid: session.state.raid
+    });
+    scheduleServerAiTurn(activeRoom, session, SERVER_AI_TURN_START_DELAY_MS);
+  }, 10000);
+}
+
+function runServerAiTurn(roomId) {
+  const room = findRoom(roomId);
+  const session = gameSessions.get(roomId);
+  if (!room || room.status !== "inProgress" || !session?.state || session.aiRunning) {
+    return;
+  }
+
+  const state = session.state;
+  if (state.raidEnded || !state.player?.isAi || hasServerBlockingDiscard(state)) {
+    return;
+  }
+
+  session.aiRunning = true;
+  let result;
+  try {
+    result = performServerAiStep(state);
+  } catch (error) {
+    console.warn(`Server AI failed in room ${roomId}: ${error.message}`);
+    result = { acted: false, reason: "serverAiError" };
+  } finally {
+    session.aiRunning = false;
+  }
+
+  session.updatedAt = Date.now();
+  publishServerSnapshot(room, session, chooseServerSnapshotReason(state, result?.snapshotReason ?? "aiTurn"), {
+    authority: "server",
+    event: result?.event ?? "ai:turn",
+    actorId: result?.actorId ?? null,
+    ...(result?.meta ?? {})
+  });
+  scheduleServerRaidAdvance(room, session);
+  scheduleServerAiTurn(room, session);
+}
+
+function performServerAiStep(state) {
+  const ai = state.player;
+  if (!ai?.isAi || !state.isPlayerActive(ai)) {
+    const turnResult = state.endTurn();
+    return { acted: true, actorId: ai?.id ?? null, event: "ai:turnSkipped", snapshotReason: "turnEnded", meta: { result: turnResult } };
+  }
+
+  const opponents = getServerAiOpponents(state, ai);
+  if (shouldServerAiExtract(state, ai, opponents)) {
+    if (state.canPlayerExtractFromTile(ai, state.currentTile)) {
+      const turnResult = state.endTurn();
+      return { acted: true, actorId: ai.id, event: "ai:extracted", snapshotReason: "turnEnded", meta: { result: turnResult } };
+    }
+
+    const extractionPlan = chooseServerAiGoalPlan(state, ai, state.getExtractionTilesForPlayer(ai));
+    if (extractionPlan?.moveTile) {
+      return performServerAiMove(state, extractionPlan.moveTile, "ai:movedToExtract");
+    }
+  }
+
+  const attackTarget = chooseServerAiAttackTarget(state, ai, opponents);
+  if (attackTarget) {
+    state.selectTile(attackTarget.position);
+    const attack = state.attackSelectedEnemy();
+    if (attack) {
+      const attackSummary = clonePlain(state.lastAttackSummary);
+      const attackerId = attackSummary?.attackerId;
+      const targetId = attackSummary?.targetId;
+      if (!state.postAttackMoveAvailable && !state.raidEnded) {
+        state.endTurn();
+      }
+      return {
+        acted: true,
+        actorId: ai.id,
+        event: "ai:attacked",
+        snapshotReason: "attackReveal",
+        meta: {
+          attackerId,
+          targetId,
+          weaponId: attack.weapon?.name ?? ai.weaponId,
+          roll: attack.roll,
+          summary: attackSummary
+        }
+      };
+    }
+  }
+
+  if (state.canLoot() && shouldServerAiLootCurrentTile(state, ai, opponents)) {
+    const item = state.lootCurrentTile();
+    const turnResult = finalizeServerActionTurn(state);
+    return {
+      acted: Boolean(item),
+      actorId: ai.id,
+      event: "ai:looted",
+      snapshotReason: "lootReveal",
+      meta: { items: item?.items ?? (item ? [item] : []), result: turnResult }
+    };
+  }
+
+  const attackMove = chooseServerAiAttackMove(state, ai, opponents);
+  if (attackMove?.moveTile) {
+    return performServerAiMove(state, attackMove.moveTile, "ai:movedToAttack");
+  }
+
+  const lootPlan = chooseServerAiLootPlan(state, ai, opponents);
+  if (lootPlan?.moveTile) {
+    return performServerAiMove(state, lootPlan.moveTile, "ai:movedToLoot");
+  }
+
+  if (state.canLoot()) {
+    const item = state.lootCurrentTile();
+    const turnResult = finalizeServerActionTurn(state);
+    return {
+      acted: Boolean(item),
+      actorId: ai.id,
+      event: "ai:looted",
+      snapshotReason: "lootReveal",
+      meta: { items: item?.items ?? (item ? [item] : []), result: turnResult }
+    };
+  }
+
+  const fallbackExtraction = chooseServerAiGoalPlan(state, ai, state.getExtractionTilesForPlayer(ai));
+  if (fallbackExtraction?.moveTile) {
+    return performServerAiMove(state, fallbackExtraction.moveTile, "ai:movedToFallback");
+  }
+
+  const turnResult = state.endTurn();
+  return { acted: true, actorId: ai.id, event: "ai:endedTurn", snapshotReason: "turnEnded", meta: { result: turnResult } };
+}
+
+function performServerAiMove(state, tile, event) {
+  const actorId = state.player?.id ?? null;
+  const wasPostAttackMove = state.postAttackMoveAvailable;
+  const moveResult = state.movePlayer(tile);
+  if (!moveResult) {
+    const turnResult = state.endTurn();
+    return { acted: false, actorId, event: "ai:moveFailed", snapshotReason: "turnEnded", meta: { result: turnResult } };
+  }
+
+  const turnResult = finalizeServerActionTurn(state, { forceEnd: moveResult.extracted || wasPostAttackMove });
+  return {
+    acted: true,
+    actorId,
+    event,
+    snapshotReason: "movement",
+    meta: {
+      type: "movement",
+      unitId: actorId,
+      path: moveResult.path,
+      result: turnResult
+    }
+  };
+}
+
+function getServerAiOpponents(state, ai) {
+  return state.players.filter((player) => player.id !== ai?.id && state.isPlayerActive(player));
+}
+
+function chooseServerAiAttackTarget(state, ai, opponents) {
+  return state.getAttackableTargets()
+    .filter((target) => opponents.some((opponent) => opponent.id === target.id))
+    .map((target) => ({
+      target,
+      score: getServerAiTargetScore(state, ai, target)
+    }))
+    .sort((a, b) => b.score - a.score)[0]?.target ?? null;
+}
+
+function chooseServerAiAttackMove(state, ai, opponents) {
+  const weapon = state.getEffectiveWeapon(ai);
+  const candidates = opponents
+    .map((target) => {
+      const targetTile = state.gameMap.tilesByKey.get(tileKey(target.position));
+      const path = targetTile ? state.findPathToTile(ai.position, targetTile, { ignorePlayerId: ai.id }) : null;
+      const moveTile = path ? getServerReachableTileAlongPath(state, path) : null;
+      return moveTile ? { moveTile, target, score: getServerAiTargetScore(state, ai, target) } : null;
+    })
+    .filter(Boolean)
+    .filter((plan) => plan.score >= 6 || hexDistance(plan.moveTile, plan.target.position) <= weapon.range)
+    .sort((a, b) => b.score - a.score);
+
+  return candidates[0] ?? null;
+}
+
+function getServerAiTargetScore(state, ai, target) {
+  const weapon = state.getEffectiveWeapon(ai);
+  const distance = hexDistance(ai.position, target.position);
+  const canShoot = distance <= weapon.range && state.hasLineOfSight(ai.position, target.position);
+  const health = getServerBodyHealthScore(target);
+  const lootValue = Number(target.bagValue ?? 0);
+  return lootValue * 0.55 + Math.max(0, 10 - health) + (canShoot ? 4 : 0) - Math.max(0, distance - weapon.range) * 0.8;
+}
+
+function chooseServerAiLootPlan(state, ai, opponents) {
+  const extractionTiles = state.getExtractionTilesForPlayer(ai);
+  return state.gameMap.lootTiles
+    .filter((tile) => !tile.looted)
+    .map((tile) => {
+      const path = state.findPathToTile(ai.position, tile, { ignorePlayerId: ai.id });
+      const moveTile = path ? getServerReachableTileAlongPath(state, path) : null;
+      if (!moveTile) {
+        return null;
+      }
+
+      const pathDistance = Math.max(0, path.length - 1);
+      const extractionDistance = getServerNearestPathDistance(state, tile, extractionTiles, ai.id);
+      const pressure = getServerNearestOpponentDistance(tile, opponents);
+      const risk = Number.isFinite(pressure) ? Math.max(0, 6 - pressure) : 0;
+      const baseValue = tile.lootType === "rare" ? 16 : 8;
+      return { tile, moveTile, score: baseValue - pathDistance * 1.5 - extractionDistance * 0.35 - risk };
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.score - a.score)[0] ?? null;
+}
+
+function chooseServerAiGoalPlan(state, ai, goalTiles) {
+  return goalTiles
+    .map((tile) => {
+      const path = state.findPathToTile(ai.position, tile, { ignorePlayerId: ai.id });
+      const moveTile = path ? getServerReachableTileAlongPath(state, path) : null;
+      return moveTile ? { tile, moveTile, distance: Math.max(0, path.length - 1) } : null;
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.distance - b.distance)[0] ?? null;
+}
+
+function getServerReachableTileAlongPath(state, path) {
+  const entryMap = new Map(state.getMovementEntries().map((entry) => [tileKey(entry.tile), entry.tile]));
+  for (let index = path.length - 1; index >= 1; index -= 1) {
+    const tile = entryMap.get(tileKey(path[index]));
+    if (tile) {
+      return tile;
+    }
+  }
+  return null;
+}
+
+function shouldServerAiLootCurrentTile(state, ai, opponents) {
+  const tile = state.currentTile;
+  if (!tile || tile.looted || tile.lootType === "none") {
+    return false;
+  }
+
+  if (tile.lootType === "rare" || opponents.length === 0) {
+    return true;
+  }
+
+  const pressure = getServerNearestOpponentDistance(ai.position, opponents);
+  return !Number.isFinite(pressure) || pressure >= 3 || Number(ai.bagValue ?? 0) < 10;
+}
+
+function shouldServerAiExtract(state, ai, opponents) {
+  const extractionDistance = getServerNearestPathDistance(state, ai.position, state.getExtractionTilesForPlayer(ai), ai.id);
+  const nearestOpponentDistance = getServerNearestOpponentDistance(ai.position, opponents);
+  const safe = !Number.isFinite(nearestOpponentDistance) || nearestOpponentDistance >= 3;
+  const bagValue = Number(ai.bagValue ?? 0);
+  const health = getServerBodyHealthScore(ai);
+
+  if (state.raid >= 3 && state.phase >= 12 && bagValue > 0) {
+    return true;
+  }
+
+  if (state.phase >= 14 && Number.isFinite(extractionDistance)) {
+    return true;
+  }
+
+  if (bagValue >= 14 && extractionDistance <= 7 && safe) {
+    return true;
+  }
+
+  return health <= 7 && bagValue > 0 && extractionDistance <= 8;
+}
+
+function getServerNearestPathDistance(state, origin, targets, ignorePlayerId) {
+  return targets.reduce((best, tile) => {
+    const path = state.findPathToTile(origin, tile, { ignorePlayerId });
+    return path ? Math.min(best, Math.max(0, path.length - 1)) : best;
+  }, Number.POSITIVE_INFINITY);
+}
+
+function getServerNearestOpponentDistance(origin, opponents) {
+  return opponents.reduce((best, opponent) => (
+    opponent.position ? Math.min(best, hexDistance(origin, opponent.position)) : best
+  ), Number.POSITIVE_INFINITY);
+}
+
+function getServerBodyHealthScore(player) {
+  return Object.values(player?.bodyHp ?? {}).reduce((sum, value) => sum + Number(value ?? 0), 0);
+}
+
+function hasServerBlockingDiscard(state) {
+  return state.players.some((player) => !player.isAi && Number(player.pendingDiscardCount ?? 0) > 0);
+}
+
+function clearServerAiTimer(session) {
+  if (session?.aiTimer) {
+    clearTimeout(session.aiTimer);
+    session.aiTimer = null;
+  }
+}
+
+function clearServerRaidAdvanceTimer(session) {
+  if (session?.raidAdvanceTimer) {
+    clearTimeout(session.raidAdvanceTimer);
+    session.raidAdvanceTimer = null;
+  }
+}
+
+function deleteGameSession(roomId) {
+  const session = gameSessions.get(roomId);
+  clearServerAiTimer(session);
+  clearServerRaidAdvanceTimer(session);
+  gameSessions.delete(roomId);
 }
 
 function getServerAiProfileId(index) {
@@ -2600,7 +2980,7 @@ function pruneRooms() {
 
   for (const roomId of gameSessions.keys()) {
     if (!roomIds.has(roomId)) {
-      gameSessions.delete(roomId);
+      deleteGameSession(roomId);
     }
   }
 

@@ -2030,6 +2030,18 @@ async function handleStartGame({ remoteStart = false } = {}) {
     }
 
     markCurrentRoomInProgress();
+    if (isServerAuthoritativeMultiplayer()) {
+      actionLog.textContent = "서버가 게임 진행을 준비 중입니다.";
+      renderer.render();
+      updateUi({ skipSnapshotBroadcast: true });
+      maybeShowBeginnerHelpOnGameStart();
+      if (comPlayerCount) {
+        comPlayerCount.disabled = true;
+      }
+      gameStarting = false;
+      return;
+    }
+
     broadcastGameSnapshot("orderReveal");
     await wait(160);
     await playRaidOrderReveal();
@@ -5116,7 +5128,7 @@ async function handleRemoteGameStart(room) {
 }
 
 function broadcastGameSnapshot(reason = "state", meta = {}) {
-  if (!state || !gameStarted || applyingRemoteSnapshot || !lobbySession.currentRoom || !isLocalHost()) {
+  if (!state || !gameStarted || applyingRemoteSnapshot || !lobbySession.currentRoom || !isLocalHost() || isServerAuthoritativeMultiplayer()) {
     return;
   }
 
@@ -8575,6 +8587,7 @@ function queueAiTurn() {
   if (
     !gameStarted ||
     !state ||
+    isServerAuthoritativeMultiplayer() ||
     isRemoteMultiplayerClient() ||
     state.raidEnded ||
     !state.player?.isAi ||
@@ -9744,6 +9757,13 @@ function startRaidAutoAdvance() {
 
     const sourceRaid = raidAutoAdvanceSourceRaid;
     stopRaidAutoAdvance();
+
+    if (isServerAuthoritativeMultiplayer()) {
+      actionLog.textContent = "서버가 다음 Raid를 준비 중입니다.";
+      updateUi({ skipSnapshotBroadcast: true });
+      renderer.render();
+      return;
+    }
 
     if (!state.raidEnded || state.raid !== sourceRaid) {
       return;
