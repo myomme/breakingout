@@ -2,7 +2,7 @@
   "AR": {
     "name": "AR",
     "label": "돌격소총",
-    "range": 5,
+    "range": 4,
     "attackDice": 3,
     "damage": {
       "head": 2,
@@ -15,7 +15,7 @@
   "SMG": {
     "name": "SMG",
     "label": "기관단총",
-    "range": 5,
+    "range": 3,
     "attackDice": 4,
     "damage": {
       "head": 2,
@@ -28,7 +28,7 @@
   "SR": {
     "name": "SR",
     "label": "저격소총",
-    "range": 9,
+    "range": 8,
     "attackDice": 1,
     "damage": {
       "head": 8,

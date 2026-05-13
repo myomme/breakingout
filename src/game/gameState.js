@@ -229,6 +229,12 @@ export class RaidGameState {
       scopeUntilRaid: false,
       drumUntilRaid: false,
       doubleLootPhase: null,
+      insuranceUntilRaid: false,
+      pendingInsuranceSelection: false,
+      insuredItemKey: null,
+      nextAttackDicePenalty: 0,
+      playerRevealPhase: null,
+      playerRevealRadius: 0,
       currentEvent: null,
       heldEventCards: [],
       pendingDiscardCount: 0,
@@ -1339,8 +1345,9 @@ export class RaidGameState {
         break;
       case "insureRaidItem":
         player.insuranceUntilRaid = true;
+        player.pendingInsuranceSelection = true;
         this.rememberHeldEventCard(player, card, "raid");
-        this.raidLog.unshift("Insurance active: one item can be preserved on failed extraction");
+        this.raidLog.unshift("Insurance active: choose one bag item to preserve");
         break;
       default:
         this.raidLog.unshift(`${card.name} effect is not handled: ${effect.type}`);
@@ -1455,6 +1462,17 @@ export class RaidGameState {
     player.bagValue = player.bag.reduce((sum, bagItem) => sum + bagItem.value, 0);
     this.raidLog.unshift(`${player.name} discarded ${item.name}`);
     return item;
+  }
+
+  insureBagItem(itemIndex, player = this.player) {
+    if (!player?.insuranceUntilRaid || itemIndex < 0 || itemIndex >= player.bag.length) {
+      return null;
+    }
+
+    player.insuredItemKey = getBagItemInsuranceKey(player.bag[itemIndex], itemIndex);
+    player.pendingInsuranceSelection = false;
+    this.raidLog.unshift(`${player.name} insured ${player.bag[itemIndex].name}`);
+    return player.bag[itemIndex];
   }
 
   checkPlayerDeath(player, reason = "dead", killer = null) {
@@ -1825,8 +1843,12 @@ export class RaidGameState {
     }
 
     player.insuranceUntilRaid = false;
+    player.pendingInsuranceSelection = false;
     player.heldEventCards = player.heldEventCards.filter((entry) => entry.card?.effect?.type !== "insureRaidItem");
-    return [...player.bag].sort((a, b) => Number(b.value ?? 0) - Number(a.value ?? 0))[0] ?? null;
+    const insuredIndex = player.bag.findIndex((item, index) => getBagItemInsuranceKey(item, index) === player.insuredItemKey);
+    const preservedItem = insuredIndex >= 0 ? player.bag[insuredIndex] : null;
+    player.insuredItemKey = null;
+    return preservedItem;
   }
 
   startNextRaid() {
@@ -1872,6 +1894,10 @@ function applyBodyDamage(target, bodyPart, damage) {
   }
 
   target.bodyHp[bodyPart] = Math.max(0, target.bodyHp[bodyPart] - damage);
+}
+
+function getBagItemInsuranceKey(item, index) {
+  return `${item?.id ?? item?.name ?? "item"}:${item?.value ?? 0}:${index}`;
 }
 
 function clonePlain(value) {

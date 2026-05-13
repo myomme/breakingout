@@ -1494,6 +1494,14 @@ function openSupportReportPanel() {
   supportReportText?.focus();
 }
 
+function refreshSupportReportButtonMode() {
+  if (!supportReportButton) {
+    return;
+  }
+
+  supportReportButton.classList.toggle("is-game-mode", Boolean(gameStarted));
+}
+
 function closeSupportReportPanel() {
   if (supportReportOverlay) {
     supportReportOverlay.hidden = true;
@@ -4277,6 +4285,7 @@ function forceExitToLogin(message) {
   if (startOverlay) {
     startOverlay.hidden = false;
   }
+  refreshSupportReportButtonMode();
   clearAccountSession();
   forgetCurrentRoom();
   lobbySession = createEmptyLobbySession();
@@ -5167,7 +5176,7 @@ function handleRemoteGameSnapshot(payload) {
     return;
   }
 
-  if (payload.reason === "discardUpdate" && payload.version <= lastSnapshotVersion) {
+  if (["discardUpdate", "insuranceUpdate"].includes(payload.reason) && payload.version <= lastSnapshotVersion) {
     handleRemoteDiscardMeta(payload.meta);
     return;
   }
@@ -5210,7 +5219,7 @@ function handleRemoteGameSnapshot(payload) {
     handleRemoteCorpseLootMeta(payload.meta);
   }
 
-  if (payload.reason === "discardUpdate") {
+  if (["discardUpdate", "insuranceUpdate"].includes(payload.reason)) {
     handleRemoteDiscardMeta(payload.meta);
   }
 
@@ -5447,6 +5456,20 @@ async function handleRemotePlayerCommand(payload) {
 
   if (command.type === "leaveGame") {
     convertControllerToAi(payload.controllerId, command.nickname ?? "플레이어");
+    return;
+  }
+
+  if (command.type === "insureBagItem") {
+    const controllerPlayer = state.players.find((player) => player.controllerId === payload.controllerId);
+    const item = state.insureBagItem(Number(command.itemIndex), controllerPlayer);
+    if (item) {
+      broadcastGameSnapshot("insuranceUpdate", {
+        viewerControllerIds: [payload.controllerId],
+        reason: `${item.name} insured`
+      });
+    }
+    renderer.render();
+    updateUi();
     return;
   }
 
@@ -5777,6 +5800,31 @@ function bindEvents() {
   });
 
   bagList?.addEventListener("click", (event) => {
+    const insureButton = event.target.closest("button[data-insure-index]");
+    if (insureButton) {
+      const player = getUiPlayer();
+      const index = Number(insureButton.dataset.insureIndex);
+      if (!Number.isInteger(index) || !player.insuranceUntilRaid || !player.bag[index]) {
+        return;
+      }
+
+      if (sendPlayerCommand({ type: "insureBagItem", itemIndex: index }, { allowOutOfTurn: true })) {
+        actionLog.textContent = "보험 지정 요청을 전송했습니다.";
+        return;
+      }
+
+      const insured = state.insureBagItem(index, player);
+      if (!insured) {
+        return;
+      }
+      actionLog.textContent = `${insured.name} insured`;
+      renderBag();
+      renderLoadoutHeader();
+      renderer.render();
+      updateUi();
+      return;
+    }
+
     const button = event.target.closest("button[data-discard-index]");
     if (!button) return;
     const player = getUiPlayer();
@@ -6098,7 +6146,9 @@ function ensureFloatingLeaveGameUi() {
   floatingLeaveGameButton.id = "floatingLeaveGameButton";
   floatingLeaveGameButton.className = "floating-leave-game";
   floatingLeaveGameButton.type = "button";
-  floatingLeaveGameButton.textContent = "게임 나가기";
+  floatingLeaveGameButton.innerHTML = `<span aria-hidden="true">×</span>`;
+  floatingLeaveGameButton.setAttribute("aria-label", "게임 나가기");
+  floatingLeaveGameButton.title = "게임 나가기";
   floatingLeaveGameButton.addEventListener("click", leaveCurrentGameToAi);
   boardPanel.append(floatingLeaveGameButton);
 }
@@ -7947,6 +7997,7 @@ function leaveCurrentGameToAi() {
   if (startOverlay) {
     startOverlay.hidden = false;
   }
+  refreshSupportReportButtonMode();
   renderLobby();
   showLobbyStep("lobby");
   setStartStatus(`${nickname}님이 게임에서 나갔습니다. COM이 대신 진행합니다.`);
@@ -9697,6 +9748,7 @@ async function restartGameFromSummary() {
   if (floatingEndTurnButton) {
     floatingEndTurnButton.hidden = true;
   }
+  refreshSupportReportButtonMode();
   resetGlobalVoiceTracking();
   if (lobbySession.currentRoom) {
     setCurrentRoomStatus("waiting");
@@ -9739,6 +9791,7 @@ function returnToLobbyFromGame() {
   if (startOverlay) {
     startOverlay.hidden = false;
   }
+  refreshSupportReportButtonMode();
   forgetCurrentRoom();
   lobbySession.currentRoom = null;
   renderLobby();
@@ -9786,6 +9839,7 @@ function updateUi({ skipSnapshotBroadcast = false } = {}) {
     floatingLeaveGameButton.hidden = !gameStarted || !lobbySession.currentRoom;
     floatingLeaveGameButton.disabled = attackSequenceRunning || cardRevealRunning || eventRevealRunning || movementSequenceRunning;
   }
+  refreshSupportReportButtonMode();
   nextRaid.disabled = !state.raidEnded || state.raid >= 3 || controlsLocked;
   weaponSelect.disabled = controlsLocked || gameStarted;
   armorSelect.disabled = controlsLocked || gameStarted;
@@ -9794,6 +9848,7 @@ function updateUi({ skipSnapshotBroadcast = false } = {}) {
   weaponSelect.value = player.weaponId;
   armorSelect.value = player.armorId;
   enforcePendingDiscardUi();
+  enforcePendingInsuranceUi();
   renderLoadoutHeader();
   renderWeaponCard();
   renderBodyHp();
@@ -9951,6 +10006,18 @@ function enforcePendingDiscardUi() {
   loadoutPanel.classList.remove("is-minimized");
   setDrawerTab("bag");
   actionLog.textContent = `가방에서 버릴 아이템 ${getUiPlayer().pendingDiscardCount}개를 선택하세요.`;
+}
+
+function enforcePendingInsuranceUi() {
+  const player = getUiPlayer();
+  if (!player?.pendingInsuranceSelection || cardRevealRunning || eventRevealRunning) {
+    return;
+  }
+
+  activeDrawerTab = "bag";
+  loadoutPanel.classList.remove("is-minimized");
+  setDrawerTab("bag");
+  actionLog.textContent = "보험으로 보존할 아이템 1개를 가방에서 선택하세요.";
 }
 
 function renderEvent() {
@@ -10263,6 +10330,7 @@ function renderBag() {
   bagSlotsLabel.textContent = `${player.bag.length} / ${player.bagSlots}`;
   const slots = Array.from({ length: player.bagSlots }, (_, index) => player.bag[index] ?? null);
   const mustDiscard = player.pendingDiscardCount > 0;
+  const canChooseInsurance = player.insuranceUntilRaid && player.pendingInsuranceSelection;
 
   bagList.innerHTML = slots
     .map((item, index) => {
@@ -10270,11 +10338,15 @@ function renderBag() {
         return "<li><span>Empty</span><span>-</span></li>";
       }
 
+      const insuranceKey = `${item.id ?? item.name ?? "item"}:${item.value ?? 0}:${index}`;
+      const insured = player.insuredItemKey === insuranceKey;
       return `
-        <li>
+        <li class="${insured ? "is-insured" : ""}">
           ${item.image ? `<img class="bag-item-image" src="${item.image}" alt="${item.name}">` : ""}
           <span class="bag-item-name">${item.name}</span>
           <span class="bag-item-value">${item.value}</span>
+          ${insured ? "<span class=\"bag-insured-badge\">보험</span>" : ""}
+          ${canChooseInsurance ? `<button class="bag-insure-button" type="button" data-insure-index="${index}">보험</button>` : ""}
           ${mustDiscard ? `<button class="bag-discard-button" type="button" data-discard-index="${index}">버리기</button>` : ""}
         </li>
       `;
@@ -10282,6 +10354,10 @@ function renderBag() {
     .join("");
 
   if (mustDiscard) {
+    setTabUnread("bag", activeDrawerTab !== "bag");
+  }
+
+  if (canChooseInsurance) {
     setTabUnread("bag", activeDrawerTab !== "bag");
   }
 }
