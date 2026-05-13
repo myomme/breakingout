@@ -658,6 +658,30 @@ body {
   align-items: end;
 }
 
+#createRoomButton.is-loading {
+  position: relative;
+  color: transparent;
+  pointer-events: none;
+}
+
+#createRoomButton.is-loading::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  margin: -9px 0 0 -9px;
+  border: 2px solid rgba(248, 242, 229, 0.32);
+  border-top-color: #f8f2e5;
+  border-radius: 50%;
+  animation: room-button-spin 760ms linear infinite;
+}
+
+@keyframes room-button-spin {
+  to { transform: rotate(360deg); }
+}
+
 .operation-panel-header {
   display: grid;
   gap: 4px;

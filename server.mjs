@@ -508,6 +508,7 @@ function createDefaultAccount(playerId, nickname = "") {
       wins: 0,
       kills: 0,
       deaths: 0,
+      abandons: 0,
       experience: 0,
       rankScore: 0,
       bestGameValue: 0,
@@ -1506,6 +1507,9 @@ function pruneRooms() {
     if (!room?.id || room.status === "finished") return false;
     const createdAt = room.createdAt ?? now;
     const playerSlots = normalizeServerSlots(room.slots).filter((slot) => slot.type === "player");
+    if (now - createdAt <= ROOM_PRESENCE_TTL_MS) {
+      return playerSlots.length > 0;
+    }
     const hasRecentPlayer = playerSlots.some((slot) => now - (slot.lastSeen ?? room.updatedAt ?? createdAt) <= ROOM_PRESENCE_TTL_MS);
     return playerSlots.length > 0 && hasRecentPlayer && now - createdAt < ROOM_TTL_MS;
   });

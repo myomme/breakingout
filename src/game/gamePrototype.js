@@ -272,6 +272,8 @@ const playedAttackRevealVersions = new Set();
 const playedEventRevealVersions = new Set();
 const processedRemoteCommandIds = new Set();
 let presenceHeartbeatTimer = 0;
+let activeRoomMissingSince = 0;
+const recentlyLeftRoomIds = new Map();
 const chatMessages = [];
 const seenChatMessageIds = new Set();
 let unreadGameChatCount = 0;
@@ -2304,6 +2306,7 @@ function completeAccountLogin({ account, sessionToken }) {
     // Ignore session persistence failures.
   }
   if (previousId !== lobbySession.localPlayerId) {
+    pendingRoomActions.forEach((pending) => window.clearTimeout(pending.timeout));
     pendingRoomActions.clear();
   }
   if (nicknameInput) {
@@ -2368,6 +2371,7 @@ async function createRoom() {
     maxPlayers: 6,
     mapPackage: createMapPackage(currentMapData, DEFAULT_MAP_NAME)
   })) {
+    setCreateRoomLoading(true);
     setStartStatus("서버에 방 생성을 요청했습니다.");
     return;
   }
@@ -2489,6 +2493,7 @@ function leaveRoom() {
   }
 
   if (sendRoomAction("leaveRoom", { roomId: room.id })) {
+    markRecentlyLeftRoom(room.id);
     lobbySession.currentRoom = null;
     forgetCurrentRoom();
     clearLocalChatMessages();
@@ -2518,6 +2523,7 @@ function leaveRoom() {
   }
 
   lobbySession.currentRoom = null;
+  markRecentlyLeftRoom(room.id);
   forgetCurrentRoom();
   clearLocalChatMessages();
   renderLobby();
@@ -4046,6 +4052,12 @@ function initServerSync() {
 
   socket.addEventListener("close", () => {
     gameServerConnected = false;
+    pendingRoomActions.forEach((pending) => {
+      window.clearTimeout(pending.timeout);
+      if (pending.action === "createRoom") {
+        setCreateRoomLoading(false);
+      }
+    });
     pendingRoomActions.clear();
     setStartStatus("서버 연결이 끊겼습니다. 로컬 테스트 동기화만 사용합니다.");
     if (!serverReconnectTimer) {
@@ -4184,6 +4196,38 @@ function refreshRoomListFromServer() {
   setStartStatus("서버 연결 전이라 로컬 방 목록만 표시합니다.");
 }
 
+function setCreateRoomLoading(loading) {
+  if (!createRoomButton) {
+    return;
+  }
+
+  createRoomButton.disabled = Boolean(loading);
+  createRoomButton.classList.toggle("is-loading", Boolean(loading));
+  createRoomButton.setAttribute("aria-busy", loading ? "true" : "false");
+}
+
+function markRecentlyLeftRoom(roomId) {
+  if (!roomId) {
+    return;
+  }
+
+  recentlyLeftRoomIds.set(roomId, Date.now() + 15000);
+}
+
+function isRecentlyLeftRoom(roomId) {
+  if (!roomId) {
+    return false;
+  }
+
+  const expiresAt = recentlyLeftRoomIds.get(roomId) ?? 0;
+  if (expiresAt <= Date.now()) {
+    recentlyLeftRoomIds.delete(roomId);
+    return false;
+  }
+
+  return true;
+}
+
 function sendRoomAction(action, payload = {}) {
   if (!gameServerConnected) {
     return false;
@@ -4191,15 +4235,19 @@ function sendRoomAction(action, payload = {}) {
 
   const actionId = `${lobbySession.localPlayerId}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
   const timeout = window.setTimeout(() => {
-    if (!pendingRoomActions.has(actionId)) {
+    const pending = pendingRoomActions.get(actionId);
+    if (!pending) {
       return;
     }
     pendingRoomActions.delete(actionId);
+    if (pending.action === "createRoom") {
+      setCreateRoomLoading(false);
+    }
     setStartStatus("서버 응답이 없습니다. 배포 서버가 최신 코드인지 확인한 뒤 다시 시도하세요.");
   }, 8000);
-  pendingRoomActions.set(actionId, timeout);
+  pendingRoomActions.set(actionId, { timeout, action });
 
-  return sendServerMessage({
+  const sent = sendServerMessage({
     type: "roomAction",
     action,
     actionId,
@@ -4207,6 +4255,16 @@ function sendRoomAction(action, payload = {}) {
     sourceId: lobbySession.localPlayerId,
     at: Date.now()
   });
+
+  if (!sent) {
+    window.clearTimeout(timeout);
+    pendingRoomActions.delete(actionId);
+    if (action === "createRoom") {
+      setCreateRoomLoading(false);
+    }
+  }
+
+  return sent;
 }
 
 function handleRoomActionResult(message) {
@@ -4215,11 +4273,18 @@ function handleRoomActionResult(message) {
   }
 
   if (message.actionId && pendingRoomActions.has(message.actionId)) {
-    window.clearTimeout(pendingRoomActions.get(message.actionId));
+    const pending = pendingRoomActions.get(message.actionId);
+    window.clearTimeout(pending.timeout);
     pendingRoomActions.delete(message.actionId);
+    if (pending.action === "createRoom") {
+      setCreateRoomLoading(false);
+    }
   }
 
   if (!message.ok) {
+    if (message.action === "createRoom") {
+      setCreateRoomLoading(false);
+    }
     setStartStatus(message.message || "서버 방 작업에 실패했습니다.");
     renderLobby();
     return;
@@ -4236,6 +4301,10 @@ function handleRoomActionResult(message) {
   }
 
   if (!message.room) {
+    return;
+  }
+
+  if (isRecentlyLeftRoom(message.room.id)) {
     return;
   }
 
@@ -4473,9 +4542,15 @@ function handleRoomStoreChanged(reason = "sync", syncedRooms = null) {
   const rooms = syncedRooms ?? getStoredRooms();
   let activeRoom = previousRoomId ? rooms.find((room) => room.id === previousRoomId) ?? null : null;
 
-  if (!activeRoom && lobbySession.accountId) {
+  if (activeRoom && isRecentlyLeftRoom(activeRoom.id)) {
+    activeRoom = null;
+  }
+
+  if (!activeRoom && lobbySession.accountId && !previousRoomId) {
     const rememberedRoomId = getRememberedRoomId();
-    const rememberedRoom = rememberedRoomId ? rooms.find((room) => room.id === rememberedRoomId) : null;
+    const rememberedRoom = rememberedRoomId && !isRecentlyLeftRoom(rememberedRoomId)
+      ? rooms.find((room) => room.id === rememberedRoomId)
+      : null;
     const rememberedSlot = rememberedRoom
       ? getRoomSlots(rememberedRoom).find((entry) => entry.type === "player" && entry.playerId === lobbySession.localPlayerId)
       : null;
@@ -4486,6 +4561,17 @@ function handleRoomStoreChanged(reason = "sync", syncedRooms = null) {
   }
 
   if (previousRoomId && !activeRoom) {
+    if (!isRecentlyLeftRoom(previousRoomId)) {
+      activeRoomMissingSince = activeRoomMissingSince || Date.now();
+      if (Date.now() - activeRoomMissingSince < 12000) {
+        requestServerRooms();
+        setStartStatus("서버 방 상태를 확인하는 중입니다...");
+        renderLobby();
+        return;
+      }
+    }
+
+    activeRoomMissingSince = 0;
     lobbySession.currentRoom = null;
     clearLocalChatMessages();
     renderLobby();
@@ -4497,6 +4583,7 @@ function handleRoomStoreChanged(reason = "sync", syncedRooms = null) {
   }
 
   if (activeRoom) {
+    activeRoomMissingSince = 0;
     activeRoom = mergeRoomWithLocalMapPackage(activeRoom);
     if (isLocalHost()) {
       reconcileDisconnectedRoom(activeRoom);
@@ -7347,7 +7434,11 @@ function leaveCurrentGameToAi() {
   }
 
   sendRoomAction("leaveRoom", { roomId });
+  markRecentlyLeftRoom(roomId);
   markLocalPlayerDisconnected();
+  window.clearTimeout(aiTurnTimer);
+  aiTurnTimer = 0;
+  stopRaidAutoAdvance();
   closeCorpseLoot("closed");
   clearPendingTileAction();
   gameStarted = false;
@@ -7751,6 +7842,7 @@ function queueAiTurn() {
   aiTurnTimer = 0;
 
   if (
+    !gameStarted ||
     !state ||
     isRemoteMultiplayerClient() ||
     state.raidEnded ||
@@ -7772,7 +7864,7 @@ function queueAiTurn() {
 }
 
 async function runAiTurn() {
-  if (!state.player?.isAi || state.raidEnded || aiTurnRunning) {
+  if (!gameStarted || !state.player?.isAi || state.raidEnded || aiTurnRunning) {
     return;
   }
 
@@ -9095,6 +9187,8 @@ function clearSessionChatOnGameEnd() {
 
 async function restartGameFromSummary() {
   stopRaidAutoAdvance();
+  window.clearTimeout(aiTurnTimer);
+  aiTurnTimer = 0;
   closeCorpseLoot("closed");
   if (gameSummaryActions) {
     gameSummaryActions.hidden = true;
@@ -9141,6 +9235,7 @@ function returnToLobbyFromGame() {
   resetGlobalVoiceTracking();
   if (roomId) {
     sendRoomAction("leaveRoom", { roomId });
+    markRecentlyLeftRoom(roomId);
   }
   if (raidSummaryOverlay) {
     raidSummaryOverlay.hidden = true;
