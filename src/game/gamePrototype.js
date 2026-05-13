@@ -283,6 +283,7 @@ const processedRemoteCommandIds = new Set();
 let presenceHeartbeatTimer = 0;
 let activeRoomMissingSince = 0;
 const recentlyLeftRoomIds = new Map();
+const declinedReconnectRoomIds = new Set();
 const chatMessages = [];
 const seenChatMessageIds = new Set();
 let unreadGameChatCount = 0;
@@ -4954,6 +4955,14 @@ function handleRoomStoreChanged(reason = "sync", syncedRooms = null) {
     }
   }
 
+  if (!activeRoom && lobbySession.accountId && !previousRoomId) {
+    const reconnectRoom = findReconnectableInProgressRoom(rooms);
+    if (reconnectRoom) {
+      promptReconnectToInProgressRoom(reconnectRoom);
+      return;
+    }
+  }
+
   if (previousRoomId && !activeRoom) {
     if (!isRecentlyLeftRoom(previousRoomId)) {
       activeRoomMissingSince = activeRoomMissingSince || Date.now();
@@ -5006,6 +5015,53 @@ function handleRoomStoreChanged(reason = "sync", syncedRooms = null) {
     const waitingRooms = rooms.filter((room) => room.status === "waiting").length;
     setStartStatus(`서버 방 목록 갱신 완료: 대기방 ${waitingRooms}개`);
   }
+}
+
+function findReconnectableInProgressRoom(rooms = []) {
+  if (!lobbySession.localPlayerId) {
+    return null;
+  }
+
+  return rooms.find((room) => {
+    if (room.status !== "inProgress" || isRecentlyLeftRoom(room.id) || declinedReconnectRoomIds.has(room.id)) {
+      return false;
+    }
+
+    return getRoomSlots(room).some((slot) => (
+      (slot.type === "player" && slot.playerId === lobbySession.localPlayerId)
+      || (slot.type === "computer" && slot.takeoverFromPlayerId === lobbySession.localPlayerId && !slot.removedByAdmin)
+    ));
+  }) ?? null;
+}
+
+function promptReconnectToInProgressRoom(room) {
+  const roomId = room?.id;
+  if (!roomId) {
+    return;
+  }
+
+  const accept = window.confirm(`진행 중인 게임이 있습니다.\n방 ${roomId}에 재접속 하시겠습니까?`);
+  if (!accept) {
+    declinedReconnectRoomIds.add(roomId);
+    setStartStatus("진행 중인 게임 재접속을 취소했습니다.");
+    renderLobby();
+    return;
+  }
+
+  reconnectToInProgressRoom(room);
+}
+
+function reconnectToInProgressRoom(room) {
+  const activeRoom = mergeRoomWithLocalMapPackage(room);
+  lobbySession.currentRoom = activeRoom;
+  rememberCurrentRoom(activeRoom.id);
+  cacheRoomMapPackage(activeRoom.mapPackage);
+  applyRoomMapPackage(activeRoom, { silent: true });
+  requestChatHistory(activeRoom.id);
+  renderLobby();
+  setStartStatus("진행 중인 게임으로 재접속 중입니다.");
+  sendRoomAction("reconnectRoom", { roomId: activeRoom.id });
+  void handleRemoteGameStart(activeRoom);
 }
 
 async function handleRemoteGameStart(room) {

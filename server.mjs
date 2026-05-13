@@ -1282,6 +1282,7 @@ function resumeAccount(client, message) {
     session.tokenHash === tokenHash ? { ...session, lastSeen: now } : session
   ));
   accounts.set(accountId, account);
+  client.playerId = accountId;
   scheduleAccountSave();
   sendJson(client, {
     type: "accountAuthResult",
@@ -1315,6 +1316,7 @@ function completeAccountAuth(client, account) {
   ].slice(0, 6);
   normalized.updatedAt = Date.now();
   accounts.set(normalized.accountId, normalized);
+  client.playerId = normalized.accountId;
   scheduleAccountSave();
   sendJson(client, {
     type: "accountAuthResult",
