@@ -135,6 +135,7 @@ let armor;
 let events;
 let pendingTileAction = null;
 let pendingMovePrediction = null;
+let lastConfirmedMoveCommandId = null;
 let attackSequenceRunning = false;
 let cardRevealRunning = false;
 let eventRevealRunning = false;
@@ -5160,7 +5161,8 @@ function handleRemoteGameSnapshot(payload) {
     pendingServerSnapshotRoomId = null;
   }
 
-  if (isLocalHost() && !restoringOwnSnapshot) {
+  const isServerAuthoritativeSnapshot = payload.sourceId === "server" || payload.meta?.authority === "server";
+  if (isLocalHost() && !restoringOwnSnapshot && !isServerAuthoritativeSnapshot) {
     return;
   }
 
@@ -5307,6 +5309,10 @@ function animateRemotePositionChanges(previousPositions, meta = {}) {
       return;
     }
 
+    if (meta.commandId && meta.commandId === lastConfirmedMoveCommandId && player.id === viewer?.id) {
+      return;
+    }
+
     const previous = previousPositions.get(player.id);
     const current = player.position;
     const metaPath = meta.type === "movement" && meta.unitId === player.id && Array.isArray(meta.path)
@@ -5432,8 +5438,13 @@ function isRemoteMultiplayerClient() {
   return Boolean(gameStarted && lobbySession.currentRoom && !isLocalHost());
 }
 
+function isServerAuthoritativeMultiplayer() {
+  return Boolean(gameStarted && lobbySession.currentRoom && gameServerConnected);
+}
+
 function sendPlayerCommand(command, { allowOutOfTurn = false } = {}) {
-  if (!isRemoteMultiplayerClient() || (!allowOutOfTurn && !canLocalControlActivePlayer())) {
+  const serverAuthoritative = isServerAuthoritativeMultiplayer();
+  if ((!serverAuthoritative && !isRemoteMultiplayerClient()) || (!allowOutOfTurn && !canLocalControlActivePlayer())) {
     actionLog.textContent = `입력 불가 | active ${state.player?.name ?? "-"} | mine ${getUiPlayer()?.name ?? "-"}`;
     return false;
   }
@@ -5447,6 +5458,15 @@ function sendPlayerCommand(command, { allowOutOfTurn = false } = {}) {
     command,
     at: Date.now()
   };
+
+  if (serverAuthoritative) {
+    if (!sendServerMessage(payload)) {
+      actionLog.textContent = "서버 연결이 끊겨 입력을 처리할 수 없습니다.";
+      return false;
+    }
+    actionLog.textContent = "입력을 서버에 전송했습니다.";
+    return payload;
+  }
 
   roomSyncChannel?.postMessage(payload);
   sendServerMessage(payload);
@@ -5485,6 +5505,11 @@ function handlePlayerCommandResult(message) {
 
   if (message.commandType === "tileAction" && message.action === "move") {
     handlePredictedMoveResult(message);
+    return;
+  }
+
+  if (message.status === "rejected") {
+    playMoveBlockedFeedback(message.reason ?? "입력 불가");
   }
 }
 
@@ -5542,6 +5567,12 @@ async function handlePredictedMoveResult(message) {
 
   if (message.status === "confirmed") {
     window.clearTimeout(pendingMovePrediction.timeout);
+    lastConfirmedMoveCommandId = message.commandId;
+    window.setTimeout(() => {
+      if (lastConfirmedMoveCommandId === message.commandId) {
+        lastConfirmedMoveCommandId = null;
+      }
+    }, 1500);
     pendingMovePrediction = null;
     actionLog.textContent = "이동 확정";
     return;
@@ -5778,7 +5809,8 @@ function bindEvents() {
   });
 
   attackAction.addEventListener("click", async () => {
-    if (sendPlayerCommand({ type: "attack" })) {
+    const selectedTileKey = state.selectedTile ? `${state.selectedTile.q},${state.selectedTile.r}` : null;
+    if (sendPlayerCommand({ type: "attack", targetTileKey: selectedTileKey })) {
       return;
     }
 

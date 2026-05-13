@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { RaidGameState } from "./src/game/gameState.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT ?? 5173);
@@ -11,6 +12,7 @@ const WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 const clients = new Set();
 let rooms = [];
 const snapshots = new Map();
+const gameSessions = new Map();
 const chatMessagesByRoom = new Map();
 const supportReports = [];
 const LOBBY_CHAT_ROOM_ID = "global_lobby";
@@ -19,6 +21,7 @@ const ROOM_PRESENCE_TTL_MS = 2 * 60 * 1000;
 const ROOM_RECONNECT_GRACE_MS = 5 * 60 * 1000;
 const MAX_CHAT_MESSAGES = 80;
 const MAX_SUPPORT_REPORTS = 200;
+const GAMEPLAY_HEX_SIZE = 42;
 const ACCOUNT_DB_PATH = process.env.ACCOUNT_DB_PATH
   ? path.resolve(process.env.ACCOUNT_DB_PATH)
   : path.join(__dirname, "data", "serverAccounts.json");
@@ -28,6 +31,7 @@ const ACCOUNT_RESULT_HISTORY_LIMIT = 80;
 const ACCOUNT_SESSION_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 const ADMIN_KEY = process.env.ADMIN_KEY ?? "";
 const accountDb = await createAccountDb();
+const gameRules = await loadGameRules();
 const accounts = await loadAccounts();
 const ACCOUNT_STORAGE_MODE = accountDb ? "postgres" : ACCOUNT_DB_PERSISTENT ? "persistent-path" : "ephemeral-app-path";
 let accountSaveTimer = 0;
@@ -1016,6 +1020,11 @@ function handleMessage(client, message) {
   }
 
   if (message.type === "gameSnapshot") {
+    const room = findRoom(message.roomId);
+    const session = gameSessions.get(message.roomId);
+    if (session?.state && room?.hostId === message.sourceId && message.snapshot) {
+      session.state.importSnapshot(message.snapshot);
+    }
     if (message.roomId) snapshots.set(message.roomId, message);
     broadcast({ ...message, sourceClientId: client.id });
     return;
@@ -1044,6 +1053,9 @@ function handleMessage(client, message) {
   }
 
   if (message.type === "playerCommand") {
+    if (handleServerPlayerCommand(client, message)) {
+      return;
+    }
     broadcast({ ...message, sourceClientId: client.id });
     return;
   }
@@ -1076,6 +1088,21 @@ async function createAccountDb() {
     console.warn(`PostgreSQL account storage unavailable: ${error.message}`);
     return null;
   }
+}
+
+async function loadGameRules() {
+  const readRule = async (relativePath) => JSON.parse(await fs.readFile(path.join(__dirname, relativePath), "utf8"));
+
+  const [playerTemplate, lootTables, weapons, dice, armor, events] = await Promise.all([
+    readRule("data/rules/playerTemplate.json"),
+    readRule("data/rules/lootTables.json"),
+    readRule("data/rules/weapons.json"),
+    readRule("data/rules/dice.json"),
+    readRule("data/rules/armor.json"),
+    readRule("data/rules/events.json")
+  ]);
+
+  return { playerTemplate, lootTables, weapons, dice, armor, events };
 }
 
 function shouldUsePostgresSsl() {
@@ -1826,6 +1853,7 @@ function leaveServerRoom(payload, playerId) {
     if (!humans.length) {
       rooms = rooms.filter((entry) => entry.id !== room.id);
       snapshots.delete(room.id);
+      gameSessions.delete(room.id);
       chatMessagesByRoom.delete(room.id);
       return { ok: true, room: null, message: "Room removed" };
     }
@@ -1847,6 +1875,7 @@ function leaveServerRoom(payload, playerId) {
   if (!room.players.length) {
     rooms = rooms.filter((entry) => entry.id !== room.id);
     snapshots.delete(room.id);
+    gameSessions.delete(room.id);
     chatMessagesByRoom.delete(room.id);
     return { ok: true, room: null, message: "Room removed" };
   }
@@ -1961,6 +1990,12 @@ function setServerStatus(payload, playerId) {
   room.status = status;
   room.updatedAt = Date.now();
   syncServerPlayersFromSlots(room);
+  if (status === "inProgress") {
+    ensureGameSession(room, { reset: true });
+  } else if (status === "finished") {
+    gameSessions.delete(room.id);
+    snapshots.delete(room.id);
+  }
   return { ok: true, room, message: "Status updated" };
 }
 
@@ -2024,6 +2059,340 @@ function reconnectTakeoverSlot(room, playerId) {
     room.hostId = playerId;
   }
   return true;
+}
+
+function ensureGameSession(room, { reset = false } = {}) {
+  if (!room?.id || room.status !== "inProgress") {
+    return null;
+  }
+
+  const existing = gameSessions.get(room.id);
+  if (existing && !reset) {
+    return existing;
+  }
+
+  const mapData = getRoomMapDataForServer(room);
+  if (!mapData) {
+    throw new Error("Missing map data");
+  }
+
+  const state = new RaidGameState({
+    mapData: createGameplayScaleMapData(mapData),
+    ...gameRules,
+    aiCount: Math.max(0, getServerPlayerLoadouts(room).length - 1),
+    playerLoadouts: getServerPlayerLoadouts(room)
+  });
+  const session = {
+    roomId: room.id,
+    state,
+    eventSeq: 0,
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  };
+  gameSessions.set(room.id, session);
+  publishServerSnapshot(room, session, "orderReveal", { authority: "server", type: "gameStart" });
+  return session;
+}
+
+function getRoomMapDataForServer(room) {
+  return clonePlain(room?.mapPackage?.data ?? null);
+}
+
+function createGameplayScaleMapData(mapData) {
+  const source = clonePlain(mapData);
+  const originalHexSize = Number(source.hexSize ?? GAMEPLAY_HEX_SIZE);
+  const targetHexSize = Math.max(GAMEPLAY_HEX_SIZE, originalHexSize);
+  const scale = targetHexSize / Math.max(1, originalHexSize);
+
+  source.gameplaySourceHexSize = originalHexSize;
+  source.hexSize = targetHexSize;
+  source.originX = Number(source.originX ?? 0) * scale;
+  source.originY = Number(source.originY ?? 0) * scale;
+  source.backgroundX = Number(source.backgroundX ?? 0) * scale;
+  source.backgroundY = Number(source.backgroundY ?? 0) * scale;
+  source.backgroundScale = Number(source.backgroundScale ?? 1) * scale;
+  return source;
+}
+
+function getServerPlayerLoadouts(room) {
+  let humanIndex = 0;
+  let computerIndex = 0;
+  return normalizeServerSlots(room.slots)
+    .filter((slot) => slot.type === "player" || slot.type === "computer")
+    .map((slot) => {
+      if (slot.type === "computer") {
+        computerIndex += 1;
+        return {
+          name: slot.takeoverName ? `${slot.takeoverName} (COM)` : `COM ${computerIndex}`,
+          controllerId: null,
+          isAi: true,
+          weaponId: slot.weaponId ?? "SMG",
+          armorId: slot.armorId ?? "lightSet"
+        };
+      }
+
+      humanIndex += 1;
+      return {
+        name: slot.nickname || `Player ${humanIndex}`,
+        controllerId: slot.playerId,
+        isAi: false,
+        weaponId: slot.weaponId ?? "AR",
+        armorId: slot.armorId ?? "lightSet",
+        cosmetics: slot.cosmetics?.equipped ?? slot.cosmetics ?? null
+      };
+    });
+}
+
+function handleServerPlayerCommand(client, message) {
+  const room = findRoom(message.roomId);
+  if (!room || room.status !== "inProgress") {
+    return false;
+  }
+
+  const session = ensureGameSession(room);
+  if (!session?.state) {
+    return false;
+  }
+
+  const command = message.command ?? {};
+  if (command.type === "tileClick") {
+    return true;
+  }
+
+  const result = applyServerPlayerCommand(session, message);
+  if (!result.handled) {
+    return false;
+  }
+
+  if (!result.ok) {
+    sendPlayerCommandResult(message, command, "rejected", { reason: result.reason ?? "입력 불가" });
+    return true;
+  }
+
+  session.updatedAt = Date.now();
+  sendPlayerCommandResult(message, command, "confirmed", { reason: result.reason ?? "confirmed" });
+  publishServerSnapshot(room, session, result.snapshotReason ?? "state", {
+    authority: "server",
+    commandId: message.commandId ?? null,
+    controllerId: message.controllerId ?? null,
+    ...(result.meta ?? {})
+  });
+  return true;
+}
+
+function applyServerPlayerCommand(session, message) {
+  const state = session.state;
+  const command = message.command ?? {};
+  const controllerId = message.controllerId ?? message.sourceId ?? null;
+  const controllerPlayerIndex = state.players.findIndex((player) => player.controllerId === controllerId);
+  const controllerPlayer = state.players[controllerPlayerIndex] ?? null;
+
+  if (!controllerPlayer && command.type !== "leaveGame") {
+    return { handled: true, ok: false, reason: "플레이어를 찾을 수 없습니다." };
+  }
+
+  if (command.type === "leaveGame") {
+    convertServerControllerToAi(state, controllerId, command.nickname ?? "플레이어");
+    return { handled: true, ok: true, snapshotReason: "playerLeft", reason: "playerLeft" };
+  }
+
+  if (command.type === "insureBagItem") {
+    const item = state.insureBagItem(Number(command.itemIndex), controllerPlayer);
+    return item
+      ? { handled: true, ok: true, snapshotReason: "insuranceUpdate", meta: { viewerControllerIds: [controllerId], reason: `${item.name} insured` } }
+      : { handled: true, ok: false, reason: "보험 처리할 아이템이 없습니다." };
+  }
+
+  if (command.type === "corpseTake") {
+    const item = state.takeCorpseBagItem(command.corpseBagId, Number(command.itemIndex), controllerPlayer);
+    return item
+      ? { handled: true, ok: true, snapshotReason: "corpseLootUpdate", meta: { viewerControllerIds: [controllerId], corpseBagId: command.corpseBagId, reason: `${item.name} moved to bag` } }
+      : { handled: true, ok: false, reason: "아이템을 옮길 수 없습니다." };
+  }
+
+  if (command.type === "corpseDrop") {
+    const item = state.dropBagItem(Number(command.itemIndex), controllerPlayer);
+    return item
+      ? { handled: true, ok: true, snapshotReason: "corpseLootUpdate", meta: { viewerControllerIds: [controllerId], corpseBagId: command.corpseBagId, reason: `${item.name} dropped` } }
+      : { handled: true, ok: false, reason: "아이템을 내려놓을 수 없습니다." };
+  }
+
+  if (command.type === "discardBagItem") {
+    const item = state.discardSelectedBagItem(Number(command.itemIndex), controllerPlayer);
+    return item
+      ? { handled: true, ok: true, snapshotReason: "discardUpdate", meta: { viewerControllerIds: [controllerId], reason: `${item.name} discarded` } }
+      : { handled: true, ok: false, reason: "버릴 아이템을 찾을 수 없습니다." };
+  }
+
+  if (state.player?.controllerId !== controllerId || state.player?.isAi) {
+    return { handled: true, ok: false, reason: "현재 턴이 아닙니다." };
+  }
+
+  if (command.type === "tileAction" && command.action === "move") {
+    const tile = state.gameMap.tilesByKey.get(command.tileKey);
+    const wasPostAttackMove = state.postAttackMoveAvailable;
+    const moveResult = tile ? state.movePlayer(tile) : null;
+    if (!moveResult) {
+      return { handled: true, ok: false, reason: "이동 불가" };
+    }
+    const endReason = finalizeServerActionTurn(state, { forceEnd: moveResult.extracted || wasPostAttackMove });
+    return {
+      handled: true,
+      ok: true,
+      snapshotReason: chooseServerSnapshotReason(state, "movement"),
+      reason: "move:confirmed",
+      meta: {
+        type: "movement",
+        event: "player:moved",
+        unitId: state.players[controllerPlayerIndex]?.id ?? state.player?.id,
+        path: moveResult.path,
+        endReason
+      }
+    };
+  }
+
+  if (command.type === "tileAction" && command.action === "corpseLoot") {
+    const tile = state.gameMap.tilesByKey.get(command.tileKey);
+    const corpseBag = tile ? state.openCorpseBag(tile) : null;
+    return corpseBag
+      ? { handled: true, ok: true, snapshotReason: "corpseLootOpen", meta: { viewerControllerIds: [controllerId], corpseBagId: corpseBag.id, reason: `${corpseBag.ownerName}'s corpse bag opened` } }
+      : { handled: true, ok: false, reason: "시체 가방을 열 수 없습니다." };
+  }
+
+  if (command.type === "tileAction" && command.action === "loot" || command.type === "loot") {
+    const item = state.lootCurrentTile();
+    if (!item) {
+      return { handled: true, ok: false, reason: "루팅할 수 없습니다." };
+    }
+    const endReason = finalizeServerActionTurn(state);
+    return {
+      handled: true,
+      ok: true,
+      snapshotReason: chooseServerSnapshotReason(state, "lootReveal"),
+      meta: { event: "player:looted", viewerControllerIds: [controllerId], items: item.items ?? [item], endReason }
+    };
+  }
+
+  if (command.type === "tileAction" && command.action === "attack" || command.type === "attack") {
+    const tileKeyValue = command.tileKey ?? command.targetTileKey ?? state.selectedTileKey;
+    const tile = state.gameMap.tilesByKey.get(tileKeyValue);
+    if (tile) {
+      state.selectTile(tile);
+    }
+    const result = state.attackSelectedEnemy();
+    if (!result) {
+      return { handled: true, ok: false, reason: "공격할 수 없습니다." };
+    }
+    if (!state.postAttackMoveAvailable && !state.raidEnded) {
+      state.endTurn();
+    }
+    return {
+      handled: true,
+      ok: true,
+      snapshotReason: chooseServerSnapshotReason(state, "attackReveal"),
+      meta: {
+        event: "player:attacked",
+        attackerId: state.lastAttackSummary?.attackerId,
+        targetId: state.lastAttackSummary?.targetId,
+        weaponId: result.weapon?.name ?? state.player?.weaponId,
+        roll: result.roll,
+        summary: state.lastAttackSummary
+      }
+    };
+  }
+
+  if (command.type === "endTurn") {
+    const result = state.endTurn();
+    return {
+      handled: true,
+      ok: true,
+      snapshotReason: chooseServerSnapshotReason(state, "turnEnded"),
+      meta: { event: "phase:advanced", result }
+    };
+  }
+
+  return { handled: false, ok: false };
+}
+
+function finalizeServerActionTurn(state, { forceEnd = false } = {}) {
+  if (state.raidEnded) {
+    return state.raidResult;
+  }
+
+  if (forceEnd || (state.getAvailableStamina() <= 0 && !state.canUseHpMove())) {
+    return state.endTurn();
+  }
+
+  return "inProgress";
+}
+
+function chooseServerSnapshotReason(state, fallback) {
+  if (state.lastEventDraws?.length > 0) {
+    return "eventReveal";
+  }
+
+  if (state.raidEnded) {
+    return "state";
+  }
+
+  return fallback;
+}
+
+function sendPlayerCommandResult(message, command, status, detail = {}) {
+  broadcast({
+    type: "playerCommandResult",
+    roomId: message.roomId,
+    sourceId: "server",
+    targetControllerId: message.controllerId ?? message.sourceId ?? null,
+    commandId: message.commandId ?? null,
+    commandType: command?.type ?? null,
+    action: command?.action ?? null,
+    status,
+    ...detail,
+    at: Date.now()
+  });
+}
+
+function publishServerSnapshot(room, session, reason = "state", meta = {}) {
+  const payload = {
+    type: "gameSnapshot",
+    roomId: room.id,
+    sourceId: "server",
+    version: Date.now() + (++session.eventSeq / 1000),
+    reason,
+    meta,
+    snapshot: session.state.exportSnapshot()
+  };
+  snapshots.set(room.id, payload);
+  broadcast(payload);
+  return payload;
+}
+
+function convertServerControllerToAi(state, controllerId, nickname = "플레이어") {
+  state.players.forEach((player, index) => {
+    if (player.controllerId !== controllerId) {
+      return;
+    }
+
+    player.isAi = true;
+    player.controllerId = null;
+    player.aiProfile = player.aiProfile ?? getServerAiProfileId(index + 1);
+    player.name = player.name.includes("(COM)") ? player.name : `${player.name} (COM)`;
+  });
+  state.raidLog.unshift(`${nickname}님이 나갔습니다. COM이 인계합니다.`);
+}
+
+function getServerAiProfileId(index) {
+  const profiles = ["aggressive", "looter", "survivor", "balanced", "hunter"];
+  return profiles[Math.max(0, index - 1) % profiles.length];
+}
+
+function clonePlain(value) {
+  if (value === undefined || value === null) {
+    return value ?? null;
+  }
+
+  return JSON.parse(JSON.stringify(value));
 }
 
 function mergeRooms(existingRooms = [], incomingRooms = []) {
@@ -2226,6 +2595,12 @@ function pruneRooms() {
     if (!roomIds.has(roomId)) {
       snapshots.delete(roomId);
       chatMessagesByRoom.delete(roomId);
+    }
+  }
+
+  for (const roomId of gameSessions.keys()) {
+    if (!roomIds.has(roomId)) {
+      gameSessions.delete(roomId);
     }
   }
 
