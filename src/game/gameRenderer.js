@@ -401,6 +401,10 @@ export class GameRenderer {
         this.ctx.fill();
       }
 
+      if (visible && tile.lootType !== "none" && !tile.looted && !this.shouldUseFastRender()) {
+        this.drawLootTileCallout(center, corners, tile);
+      }
+
       const playerVisible = visiblePlayerKeys.has(key);
       const selectedVisible = key === selectedKey && visible && playerTurn && !playerVisible;
 
@@ -507,7 +511,7 @@ export class GameRenderer {
     const radius = clamp(5 * this.camera.zoom, 3, 7);
 
     if (tile.lootType !== "none") {
-      this.drawLootCrateMarker(center.x - 8, center.y + 8, radius + 1, tile);
+      this.drawLootCrateMarker(center.x - 9, center.y + 9, radius + 1, tile);
     }
     const corpseBag = this.state.getCorpseBagAtTile?.(tile);
     if (corpseBag) {
@@ -532,8 +536,37 @@ export class GameRenderer {
     this.ctx.restore();
   }
 
+  drawLootTileCallout(center, corners, tile) {
+    const rare = tile.lootType === "rare";
+    const accent = rare ? "rgba(236, 201, 112, 0.92)" : "rgba(150, 220, 203, 0.86)";
+    const glow = rare ? "rgba(236, 201, 112, 0.18)" : "rgba(150, 220, 203, 0.16)";
+
+    this.ctx.save();
+    this.ctx.beginPath();
+    corners.forEach((corner, index) => {
+      if (index === 0) this.ctx.moveTo(corner.x, corner.y);
+      else this.ctx.lineTo(corner.x, corner.y);
+    });
+    this.ctx.closePath();
+    this.ctx.fillStyle = glow;
+    this.ctx.fill();
+    this.ctx.setLineDash([5, 4]);
+    this.ctx.strokeStyle = accent;
+    this.ctx.lineWidth = clamp(1.6 * this.camera.zoom, 1.2, 2.4);
+    this.ctx.stroke();
+    this.ctx.setLineDash([]);
+
+    const pulseRadius = clamp(16 * this.camera.zoom, 9, 20);
+    this.ctx.beginPath();
+    this.ctx.arc(center.x, center.y, pulseRadius, 0, Math.PI * 2);
+    this.ctx.strokeStyle = rare ? "rgba(255, 236, 172, 0.52)" : "rgba(207, 248, 239, 0.46)";
+    this.ctx.lineWidth = 1.4;
+    this.ctx.stroke();
+    this.ctx.restore();
+  }
+
   drawLootCrateMarker(x, y, radius, tile) {
-    const size = radius * 2.15;
+    const size = radius * 2.6;
     const left = x - size / 2;
     const top = y - size / 2;
     const fill = tile.looted
@@ -548,6 +581,10 @@ export class GameRenderer {
         : "#f6ead4";
 
     this.ctx.save();
+    if (!tile.looted) {
+      this.ctx.shadowColor = tile.lootType === "rare" ? "rgba(255, 224, 128, 0.58)" : "rgba(188, 244, 232, 0.48)";
+      this.ctx.shadowBlur = 8;
+    }
     this.ctx.beginPath();
     this.ctx.roundRect(left, top, size, size, Math.max(2, radius * 0.65));
     this.ctx.fillStyle = fill;
@@ -555,6 +592,7 @@ export class GameRenderer {
     this.ctx.strokeStyle = stroke;
     this.ctx.lineWidth = 1.3;
     this.ctx.stroke();
+    this.ctx.shadowBlur = 0;
 
     this.ctx.beginPath();
     this.ctx.moveTo(left + size * 0.22, top + size * 0.38);
@@ -574,6 +612,12 @@ export class GameRenderer {
       this.ctx.strokeStyle = "rgba(35, 30, 27, 0.88)";
       this.ctx.lineWidth = 1.5;
       this.ctx.stroke();
+    } else if (this.camera.zoom > 0.42) {
+      this.ctx.fillStyle = tile.lootType === "rare" ? "#2b210d" : "#102321";
+      this.ctx.font = `900 ${clamp(7.5 * this.camera.zoom, 7, 10)}px Inter, system-ui, sans-serif`;
+      this.ctx.textAlign = "center";
+      this.ctx.textBaseline = "middle";
+      this.ctx.fillText(tile.lootType === "rare" ? "RARE" : "LOOT", x, top - clamp(5 * this.camera.zoom, 4, 7));
     }
 
     this.ctx.restore();

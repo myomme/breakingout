@@ -1438,7 +1438,7 @@ function ensureSupportReportUi() {
   supportReportButton.className = "support-report-button";
   supportReportButton.type = "button";
   supportReportButton.setAttribute("aria-label", "신고 및 건의");
-  supportReportButton.innerHTML = `<span>!</span>`;
+  supportReportButton.innerHTML = `<span>!</span><em>버그 제보</em>`;
 
   supportReportOverlay = document.createElement("div");
   supportReportOverlay.id = "supportReportOverlay";
@@ -4523,6 +4523,11 @@ function handleServerMessage(message) {
     return;
   }
 
+  if (message.type === "gameEvent") {
+    handleServerGameEvent(message);
+    return;
+  }
+
   if (message.type === "snapshotRequest") {
     handleSnapshotRequest(message);
     return;
@@ -4542,6 +4547,36 @@ function handleServerMessage(message) {
 
   if (message.type === "playerCommandResult") {
     handlePlayerCommandResult(message);
+  }
+}
+
+function handleServerGameEvent(message) {
+  if (!message || message.roomId !== lobbySession.currentRoom?.id || message.sourceId !== "server") {
+    return;
+  }
+
+  if (!gameStarted || !state) {
+    return;
+  }
+
+  const labels = {
+    "player:moved": "이동 확정",
+    "player:attacked": "공격 판정 확정",
+    "player:looted": "루팅 확정",
+    "phase:advanced": "턴 진행 확정",
+    "ai:movedToExtract": "COM 이동",
+    "ai:movedToAttack": "COM 이동",
+    "ai:movedToLoot": "COM 이동",
+    "ai:movedToFallback": "COM 이동",
+    "ai:attacked": "COM 공격",
+    "ai:looted": "COM 루팅",
+    "ai:endedTurn": "COM 턴 종료",
+    "ai:extracted": "COM 탈출",
+    "raid:advanced": `Raid ${message.meta?.raid ?? ""} 시작`
+  };
+  const label = labels[message.event];
+  if (label && !attackSequenceRunning && !eventRevealRunning && !cardRevealRunning) {
+    actionLog.textContent = label;
   }
 }
 

@@ -2374,15 +2374,28 @@ function sendPlayerCommandResult(message, command, status, detail = {}) {
 }
 
 function publishServerSnapshot(room, session, reason = "state", meta = {}) {
+  const version = Date.now() + (++session.eventSeq / 1000);
   const payload = {
     type: "gameSnapshot",
     roomId: room.id,
     sourceId: "server",
-    version: Date.now() + (++session.eventSeq / 1000),
+    version,
     reason,
     meta,
     snapshot: session.state.exportSnapshot()
   };
+  if (meta?.event) {
+    broadcast({
+      type: "gameEvent",
+      roomId: room.id,
+      sourceId: "server",
+      version,
+      reason,
+      event: meta.event,
+      meta,
+      at: Date.now()
+    });
+  }
   snapshots.set(room.id, payload);
   broadcast(payload);
   return payload;
