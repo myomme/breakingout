@@ -1014,17 +1014,17 @@ body {
 .session-chat--game {
   position: fixed;
   left: 14px;
-  bottom: 110px;
+  bottom: 178px;
   z-index: 21;
   width: min(360px, calc(100vw - 120px));
 }
 
 .session-chat--game {
-  border-color: transparent;
-  background: transparent;
-  box-shadow: none;
-  backdrop-filter: none;
-  opacity: 0.68;
+  border-color: rgba(160, 178, 166, 0.26);
+  background: linear-gradient(180deg, rgba(20, 27, 26, 0.3), rgba(9, 13, 13, 0.3));
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.16);
+  backdrop-filter: blur(8px);
+  opacity: 1;
   transition: opacity 140ms ease;
 }
 
@@ -1051,13 +1051,13 @@ body {
   width: fit-content;
   max-width: min(320px, 100%);
   border-left: 0;
-  background: rgba(9, 13, 13, 0.62);
+  background: rgba(9, 13, 13, 0.76);
   box-shadow: 0 8px 18px rgba(0, 0, 0, 0.22);
 }
 
 .session-chat--game .session-chat-message.is-mine {
   justify-self: end;
-  background: rgba(44, 71, 76, 0.66);
+  background: rgba(44, 71, 76, 0.78);
 }
 
 .session-chat--lobby {
@@ -5828,13 +5828,13 @@ dd {
 
   .session-chat--game {
     left: max(8px, env(safe-area-inset-left));
-    right: max(78px, calc(env(safe-area-inset-right) + 72px));
-    bottom: max(20px, calc(env(safe-area-inset-bottom) + 14px));
+    right: max(8px, env(safe-area-inset-right));
+    bottom: max(118px, calc(env(safe-area-inset-bottom) + 112px));
     width: auto;
     max-height: min(42dvh, 330px);
     z-index: 23;
     border-radius: 10px;
-    opacity: 0.84;
+    opacity: 1;
   }
 
   .session-chat--game .session-chat-toggle {
@@ -6170,13 +6170,11 @@ dd {
   right: auto;
   top: auto;
   bottom: max(126px, calc(env(safe-area-inset-bottom) + 120px));
-  width: 104px;
+  width: 42px;
   height: 42px;
-  display: inline-grid;
-  grid-template-columns: 28px 1fr;
-  align-items: center;
-  gap: 4px;
-  padding: 0 12px 0 9px;
+  display: grid;
+  place-items: center;
+  padding: 0;
   border: 1px solid rgba(170, 198, 206, 0.3);
   border-radius: 10px;
   background: linear-gradient(180deg, rgba(24, 35, 38, 0.9), rgba(9, 13, 14, 0.92));
@@ -6198,14 +6196,7 @@ dd {
 }
 
 .support-report-button.is-game-mode em {
-  position: relative;
-  z-index: 1;
-  display: block;
-  color: #d9edf1;
-  font-size: 12px;
-  font-style: normal;
-  font-weight: 900;
-  white-space: nowrap;
+  display: none;
 }
 
 .support-report-overlay {

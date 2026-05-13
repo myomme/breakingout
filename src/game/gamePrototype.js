@@ -147,6 +147,7 @@ let turnTimerInterval = 0;
 let turnTimerStartedAt = 0;
 let turnTimerPlayerIndex = null;
 let turnTimerPhase = null;
+let lastTurnTimeoutCommandKey = null;
 let lastHudRaid = null;
 let lastHudPhase = null;
 let raidAutoAdvanceTimer = 0;
@@ -10191,6 +10192,7 @@ function resetTurnTimer() {
   turnTimerStartedAt = Date.now();
   turnTimerPlayerIndex = state.activePlayerIndex;
   turnTimerPhase = state.phase;
+  lastTurnTimeoutCommandKey = null;
 }
 
 function handleTurnTimerTick() {
@@ -10202,7 +10204,6 @@ function handleTurnTimerTick() {
   renderTurnTimer();
 
   if (
-    isLocalHost() &&
     !state.player?.isAi &&
     !hasBlockingPlayerDiscard() &&
     getTurnTimerRemaining() <= 0
@@ -10210,6 +10211,21 @@ function handleTurnTimerTick() {
     if (corpseLootSession) {
       closeCorpseLoot("timeout");
     }
+
+    if (isServerAuthoritativeMultiplayer()) {
+      const timeoutKey = `${state.activePlayerIndex}:${state.phase}:${state.raid}`;
+      if (lastTurnTimeoutCommandKey !== timeoutKey && canLocalControlActivePlayer()) {
+        lastTurnTimeoutCommandKey = timeoutKey;
+        sendPlayerCommand({ type: "endTurn", reason: "timeout" }, { allowOutOfTurn: true });
+        actionLog.textContent = "시간 초과 | 서버에 턴 종료 요청";
+      }
+      return;
+    }
+
+    if (!isLocalHost()) {
+      return;
+    }
+
     const result = state.endTurn();
     clearPendingTileAction();
     actionLog.textContent = result === "inProgress" ? "시간 초과 | turn end" : resultLabel(result);
