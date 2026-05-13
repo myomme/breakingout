@@ -9162,7 +9162,7 @@ async function playRaidOrderReveal() {
 }
 
 function schedulePendingEventReveal() {
-  if (!state || eventRevealRunning || cardRevealRunning || !raidOrderOverlay || !raidOrderStage) {
+  if (!state || applyingRemoteSnapshot || eventRevealRunning || cardRevealRunning || !raidOrderOverlay || !raidOrderStage) {
     return;
   }
 

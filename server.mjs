@@ -2375,6 +2375,7 @@ function sendPlayerCommandResult(message, command, status, detail = {}) {
 
 function publishServerSnapshot(room, session, reason = "state", meta = {}) {
   const version = Date.now() + (++session.eventSeq / 1000);
+  const snapshot = session.state.exportSnapshot();
   const payload = {
     type: "gameSnapshot",
     roomId: room.id,
@@ -2382,7 +2383,7 @@ function publishServerSnapshot(room, session, reason = "state", meta = {}) {
     version,
     reason,
     meta,
-    snapshot: session.state.exportSnapshot()
+    snapshot
   };
   if (meta?.event) {
     broadcast({
@@ -2398,6 +2399,9 @@ function publishServerSnapshot(room, session, reason = "state", meta = {}) {
   }
   snapshots.set(room.id, payload);
   broadcast(payload);
+  if (reason === "eventReveal") {
+    session.state.lastEventDraws = [];
+  }
   return payload;
 }
 
