@@ -683,11 +683,13 @@ export class GameRenderer {
       const center = this.worldToScreen(this.hexToWorld(renderPosition));
       const hitFlash = this.effects.some((effect) => effect.type === "hit" && effect.targetId === player.id);
       const tokenSkin = player.cosmetics?.equipped?.tokenSkin ?? "default";
+      const tokenRing = player.cosmetics?.equipped?.tokenRing ?? "default";
       const tokenRadius = this.getPlayerTokenRadius(active);
       const detailLevel = this.getTokenDetailLevel();
       const fillColor = getPlayerTokenFill({ active, attackable, hitFlash, tokenSkin });
       const strokeColor = getPlayerTokenStroke({ active, tokenSkin });
       const advancedToken = TOKEN_SKIN_STYLES[tokenSkin];
+      const simpleToken = TOKEN_SIMPLE_STYLES[tokenSkin];
 
       if (advancedToken) {
         drawDemoScaleToken(this.ctx, center, tokenRadius, tokenSkin, String(index + 1), {
@@ -696,42 +698,47 @@ export class GameRenderer {
           detailLevel
         });
       } else {
-        this.ctx.beginPath();
-        this.ctx.arc(center.x, center.y, tokenRadius, 0, Math.PI * 2);
-        this.ctx.fillStyle = fillColor;
-        this.ctx.fill();
-        this.ctx.strokeStyle = strokeColor;
-        this.ctx.lineWidth = active ? 3 : 2.2;
-        this.ctx.stroke();
-
-        if (tokenSkin === "token_ember") {
-          this.ctx.beginPath();
-          this.ctx.arc(center.x, center.y, tokenRadius + 3, 0, Math.PI * 2);
-          this.ctx.strokeStyle = "rgba(255, 153, 74, 0.48)";
-          this.ctx.lineWidth = 2;
-          this.ctx.stroke();
-        }
-
-        if (tokenSkin === "token_signal_blue") {
-          this.ctx.beginPath();
-          this.ctx.arc(center.x, center.y, tokenRadius + 4, 0, Math.PI * 2);
-          this.ctx.strokeStyle = "rgba(99, 194, 255, 0.58)";
-          this.ctx.lineWidth = 2;
-          this.ctx.stroke();
-        }
-
-        if (tokenSkin === "token_hazard") {
+        if (simpleToken?.shape === "square") {
           this.ctx.save();
           this.ctx.translate(center.x, center.y);
           this.ctx.rotate(Math.PI / 4);
-          this.ctx.strokeStyle = "rgba(255, 212, 87, 0.68)";
+          this.ctx.fillStyle = fillColor;
+          this.ctx.strokeStyle = strokeColor;
+          this.ctx.lineWidth = active ? 3 : 2.2;
+          this.ctx.beginPath();
+          const side = tokenRadius * 1.46;
+          this.ctx.roundRect?.(-side / 2, -side / 2, side, side, 5);
+          if (!this.ctx.roundRect) {
+            this.ctx.rect(-side / 2, -side / 2, side, side);
+          }
+          this.ctx.fill();
+          this.ctx.stroke();
+          this.ctx.strokeStyle = simpleToken.glow;
           this.ctx.lineWidth = 2;
-          this.ctx.strokeRect(-tokenRadius - 2, -tokenRadius - 2, (tokenRadius + 2) * 2, (tokenRadius + 2) * 2);
+          this.ctx.strokeRect(-side / 2 - 4, -side / 2 - 4, side + 8, side + 8);
           this.ctx.restore();
+        } else {
+          this.ctx.beginPath();
+          this.ctx.arc(center.x, center.y, tokenRadius, 0, Math.PI * 2);
+          this.ctx.fillStyle = fillColor;
+          this.ctx.fill();
+          this.ctx.strokeStyle = strokeColor;
+          this.ctx.lineWidth = active ? 3 : 2.2;
+          this.ctx.stroke();
+        }
+
+        if (simpleToken?.ring) {
+          this.ctx.beginPath();
+          this.ctx.arc(center.x, center.y, tokenRadius + 3, 0, Math.PI * 2);
+          this.ctx.strokeStyle = simpleToken.glow;
+          this.ctx.lineWidth = 2;
+          this.ctx.stroke();
         }
 
         drawAdvancedTokenMarkings(this.ctx, center, tokenRadius + 3, tokenSkin, detailLevel);
       }
+
+      drawEquippedTokenRing(this.ctx, center, tokenRadius, tokenRing);
 
       if (attackable || hitFlash) {
         this.ctx.beginPath();
@@ -1259,6 +1266,11 @@ function getPlayerTokenFill({ active, attackable, hitFlash, tokenSkin }) {
     return attackable ? "#b5302d" : active ? advanced.activeFill : advanced.fill;
   }
 
+  const simple = TOKEN_SIMPLE_STYLES[tokenSkin];
+  if (simple) {
+    return attackable ? "#b5302d" : active ? simple.activeFill : simple.fill;
+  }
+
   if (tokenSkin === "token_ember") {
     return active ? "#8a3f22" : attackable ? "#b5302d" : "#a85d32";
   }
@@ -1284,6 +1296,11 @@ function getPlayerTokenStroke({ active, tokenSkin }) {
     return active ? advanced.activeStroke : advanced.stroke;
   }
 
+  const simple = TOKEN_SIMPLE_STYLES[tokenSkin];
+  if (simple) {
+    return active ? simple.activeStroke : simple.stroke;
+  }
+
   if (tokenSkin === "token_ember") {
     return active ? "#ffe0b2" : "#ffb46f";
   }
@@ -1301,6 +1318,47 @@ function getPlayerTokenStroke({ active, tokenSkin }) {
   }
 
   return active ? "#ffffff" : "#e7efe8";
+}
+
+const TOKEN_SIMPLE_STYLES = {
+  token_ember: { fill: "#a85d32", activeFill: "#8a3f22", stroke: "#ffb46f", activeStroke: "#ffe0b2", glow: "rgba(255, 153, 74, 0.48)", ring: true },
+  token_signal_blue: { fill: "#1b6f9b", activeFill: "#123d59", stroke: "#8ed8ff", activeStroke: "#d6f3ff", glow: "rgba(99, 194, 255, 0.58)", ring: true },
+  token_signal_green: { fill: "#2f8c55", activeFill: "#185434", stroke: "#9df5b7", activeStroke: "#d9ffe4", glow: "rgba(117, 245, 151, 0.48)", ring: true },
+  token_signal_violet: { fill: "#694aa8", activeFill: "#3d2869", stroke: "#c4a7ff", activeStroke: "#eee1ff", glow: "rgba(178, 135, 255, 0.5)", ring: true },
+  token_signal_rose: { fill: "#a84668", activeFill: "#68283e", stroke: "#ffadc6", activeStroke: "#ffd7e4", glow: "rgba(255, 118, 158, 0.5)", ring: true },
+  token_hazard: { fill: "#8a6b1b", activeFill: "#5a4610", stroke: "#ffd457", activeStroke: "#fff0a8", glow: "rgba(255, 212, 87, 0.68)", shape: "square" },
+  token_hazard_cyan: { fill: "#176d76", activeFill: "#0c444a", stroke: "#6ff4ff", activeStroke: "#d0fdff", glow: "rgba(111, 244, 255, 0.58)", shape: "square" },
+  token_hazard_magenta: { fill: "#823061", activeFill: "#4f1b3b", stroke: "#ff8fe0", activeStroke: "#ffd6f2", glow: "rgba(255, 101, 210, 0.58)", shape: "square" },
+  token_hazard_white: { fill: "#d8d9cf", activeFill: "#777d73", stroke: "#ffffff", activeStroke: "#ffffff", glow: "rgba(255, 255, 255, 0.48)", shape: "square" }
+};
+
+const TOKEN_RING_STYLES = {
+  ring_white_glow: "rgba(255, 255, 255, 0.78)",
+  ring_ember_glow: "rgba(255, 153, 74, 0.72)",
+  ring_signal_glow: "rgba(99, 194, 255, 0.76)",
+  ring_hazmat_glow: "rgba(255, 212, 87, 0.74)"
+};
+
+function drawEquippedTokenRing(ctx, center, radius, tokenRing) {
+  const color = TOKEN_RING_STYLES[tokenRing];
+  if (!color) {
+    return;
+  }
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(center.x, center.y, radius + 7, 0, Math.PI * 2);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 3;
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 12;
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(center.x, center.y, radius + 11, 0, Math.PI * 2);
+  ctx.globalAlpha = 0.32;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.restore();
 }
 
 const TOKEN_SKIN_STYLES = {

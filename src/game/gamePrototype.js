@@ -283,52 +283,82 @@ const COSMETIC_CATALOG = [
   {
     id: "nameplate_ranger",
     category: "nameplate",
-    categoryLabel: "이름표",
-    label: "레인저 플레이트",
+    categoryLabel: "프로필 카드",
+    label: "레인저 프로필 카드",
     rarity: "Field",
     preview: "RANGER",
     description: "프로필에 녹색 작전 라인을 두르고, 로비에서 생존자 느낌을 확실히 보여줍니다.",
-    price: 80
+    price: 2800
   },
   {
     id: "nameplate_blacksite",
     category: "nameplate",
-    categoryLabel: "이름표",
-    label: "블랙사이트 플레이트",
+    categoryLabel: "프로필 카드",
+    label: "블랙사이트 프로필 카드",
     rarity: "Elite",
     preview: "BLACK",
-    description: "어두운 보라빛 글로우가 들어간 고급 이름표입니다. 방 목록에서 제일 차갑게 보입니다.",
-    price: 160
+    description: "어두운 보라빛 글로우가 들어간 고급 프로필 카드입니다. 방 목록에서 제일 차갑게 보입니다.",
+    price: 4200
   },
   {
     id: "nameplate_medtech",
     category: "nameplate",
-    categoryLabel: "이름표",
-    label: "메드테크 플레이트",
+    categoryLabel: "프로필 카드",
+    label: "메드테크 프로필 카드",
     rarity: "Rare",
     preview: "MED",
-    description: "청록색 의료 장비 라인이 들어간 이름표입니다. 침착한 구조대 느낌을 줍니다.",
-    price: 130
+    description: "청록색 의료 장비 라인이 들어간 프로필 카드입니다. 침착한 구조대 느낌을 줍니다.",
+    price: 3200
   },
   {
     id: "nameplate_goldline",
     category: "nameplate",
-    categoryLabel: "이름표",
-    label: "골드라인 플레이트",
+    categoryLabel: "프로필 카드",
+    label: "골드라인 프로필 카드",
     rarity: "Epic",
     preview: "GOLD",
-    description: "검은 바탕에 금색 라인을 얹은 고급 이름표입니다. 로비에서 확실히 눈에 띕니다.",
-    price: 260
+    description: "검은 바탕에 금색 라인을 얹은 고급 프로필 카드입니다. 로비에서 확실히 눈에 띕니다.",
+    price: 5200
   },
   {
     id: "nameplate_bloodmark",
     category: "nameplate",
-    categoryLabel: "이름표",
-    label: "블러드마크 플레이트",
+    categoryLabel: "프로필 카드",
+    label: "블러드마크 프로필 카드",
     rarity: "Legend",
     preview: "MARK",
-    description: "짙은 붉은 전투 흔적을 남기는 이름표입니다. 킬러 성향을 강하게 보여줍니다.",
-    price: 420
+    description: "짙은 붉은 전투 흔적을 남기는 프로필 카드입니다. 킬러 성향을 강하게 보여줍니다.",
+    price: 6400
+  },
+  {
+    id: "nameplate_recon",
+    category: "nameplate",
+    categoryLabel: "프로필 카드",
+    label: "Recon 프로필 카드",
+    rarity: "Epic",
+    preview: "RECON",
+    description: "거리계 링과 감시 점 패턴을 입힌 정찰 테마 프로필 카드입니다.",
+    price: 5600
+  },
+  {
+    id: "nameplate_thermal",
+    category: "nameplate",
+    categoryLabel: "프로필 카드",
+    label: "Thermal 프로필 카드",
+    rarity: "Epic",
+    preview: "THERM",
+    description: "열화상 밴드와 센서 글로우를 더한 전술 프로필 카드입니다.",
+    price: 6200
+  },
+  {
+    id: "nameplate_hazmat",
+    category: "nameplate",
+    categoryLabel: "프로필 카드",
+    label: "Hazmat 프로필 카드",
+    rarity: "Legend",
+    preview: "HAZ",
+    description: "오염 경고 스트라이프와 방호 장비 색감을 맞춘 프로필 카드입니다.",
+    price: 6800
   },
   {
     id: "chat_radio",
@@ -381,16 +411,6 @@ const COSMETIC_CATALOG = [
     price: 360
   },
   {
-    id: "token_white_ring",
-    category: "tokenSkin",
-    categoryLabel: "말",
-    label: "화이트 링",
-    rarity: "Field",
-    preview: "○",
-    description: "내 말 주변을 하얀 링으로 강조합니다. 전술 지도 위에서 위치 식별이 훨씬 쉬워집니다.",
-    price: 90
-  },
-  {
     id: "token_ember",
     category: "tokenSkin",
     categoryLabel: "말",
@@ -398,7 +418,7 @@ const COSMETIC_CATALOG = [
     rarity: "Elite",
     preview: "●",
     description: "붉은 엠버 색 말 스킨입니다. 상대 화면에서도 같은 색상으로 표시됩니다.",
-    price: 180
+    price: 1000
   },
   {
     id: "token_signal_blue",
@@ -408,7 +428,37 @@ const COSMETIC_CATALOG = [
     rarity: "Rare",
     preview: "●",
     description: "푸른 통신 신호 색상의 말 스킨입니다. 추후 전용 링 효과와 함께 확장됩니다.",
-    price: 170
+    price: 1000
+  },
+  {
+    id: "token_signal_green",
+    category: "tokenSkin",
+    categoryLabel: "말",
+    label: "시그널 그린",
+    rarity: "Rare",
+    preview: "●",
+    description: "녹색 통신 신호 색상의 원형 말 스킨입니다.",
+    price: 1000
+  },
+  {
+    id: "token_signal_violet",
+    category: "tokenSkin",
+    categoryLabel: "말",
+    label: "시그널 바이올렛",
+    rarity: "Rare",
+    preview: "●",
+    description: "보라색 식별 신호를 입힌 원형 말 스킨입니다.",
+    price: 1000
+  },
+  {
+    id: "token_signal_rose",
+    category: "tokenSkin",
+    categoryLabel: "말",
+    label: "시그널 로즈",
+    rarity: "Rare",
+    preview: "●",
+    description: "장밋빛 경고 신호 색상의 원형 말 스킨입니다.",
+    price: 1000
   },
   {
     id: "token_hazard",
@@ -418,7 +468,37 @@ const COSMETIC_CATALOG = [
     rarity: "Epic",
     preview: "◆",
     description: "위험 구역 표식 같은 말 스킨입니다. 전술 지도에서 강한 시인성을 목표로 합니다.",
-    price: 280
+    price: 1800
+  },
+  {
+    id: "token_hazard_cyan",
+    category: "tokenSkin",
+    categoryLabel: "말",
+    label: "해저드 시안",
+    rarity: "Epic",
+    preview: "◆",
+    description: "시안 경고등 색상의 사각형 말 스킨입니다.",
+    price: 1800
+  },
+  {
+    id: "token_hazard_magenta",
+    category: "tokenSkin",
+    categoryLabel: "말",
+    label: "해저드 마젠타",
+    rarity: "Epic",
+    preview: "◆",
+    description: "마젠타 경고 표식이 강조된 사각형 말 스킨입니다.",
+    price: 1800
+  },
+  {
+    id: "token_hazard_white",
+    category: "tokenSkin",
+    categoryLabel: "말",
+    label: "해저드 화이트",
+    rarity: "Epic",
+    preview: "◆",
+    description: "백색 방호 장비 느낌의 사각형 말 스킨입니다.",
+    price: 1800
   },
   {
     id: "token_standard_issue",
@@ -428,7 +508,7 @@ const COSMETIC_CATALOG = [
     rarity: "Field",
     preview: "1",
     description: "기본 지급 장비 감성의 무광 폴리머 토큰입니다. 흰 식별 링과 짧은 장비 라인이 들어갑니다.",
-    price: 120
+    price: 5000
   },
   {
     id: "token_recon",
@@ -438,7 +518,7 @@ const COSMETIC_CATALOG = [
     rarity: "Rare",
     preview: "1",
     description: "정찰 UI 스타일의 얇은 거리계 링과 관측 점 마킹을 가진 말 스킨입니다.",
-    price: 220
+    price: 5000
   },
   {
     id: "token_thermal",
@@ -448,7 +528,7 @@ const COSMETIC_CATALOG = [
     rarity: "Epic",
     preview: "1",
     description: "열화상 식별 패널을 모티브로 한 온도 밴드와 센서 코어가 표시됩니다.",
-    price: 340
+    price: 5000
   },
   {
     id: "token_hazmat",
@@ -458,7 +538,7 @@ const COSMETIC_CATALOG = [
     rarity: "Epic",
     preview: "1",
     description: "오염 경고 장비 감성의 경고색 분할 링과 방호 씰이 적용됩니다.",
-    price: 360
+    price: 5000
   },
   {
     id: "token_jammer",
@@ -468,7 +548,7 @@ const COSMETIC_CATALOG = [
     rarity: "Epic",
     preview: "1",
     description: "전파 교란 모듈처럼 비대칭 송신 링과 노이즈 스트립이 들어간 스킨입니다.",
-    price: 380
+    price: 5000
   },
   {
     id: "token_black_cell",
@@ -478,7 +558,7 @@ const COSMETIC_CATALOG = [
     rarity: "Legend",
     preview: "1",
     description: "낮은 반사율의 흑색 세라믹 장비와 절제된 회색 링으로 구성된 고급 스킨입니다.",
-    price: 520
+    price: 5000
   },
   {
     id: "token_contraband",
@@ -488,7 +568,7 @@ const COSMETIC_CATALOG = [
     rarity: "Legend",
     preview: "1",
     description: "블랙마켓 장비 감성의 봉인 테이프, 긁힌 금속 링, 황동빛 포인트가 보입니다.",
-    price: 460
+    price: 5000
   },
   {
     id: "token_extraction_mark",
@@ -498,7 +578,47 @@ const COSMETIC_CATALOG = [
     rarity: "Legend",
     preview: "1",
     description: "탈출 마커와 구조 신호를 모티브로 한 집결 지점 식별 스킨입니다.",
-    price: 500
+    price: 5000
+  },
+  {
+    id: "ring_white_glow",
+    category: "tokenRing",
+    categoryLabel: "링",
+    label: "화이트 글로우 링",
+    rarity: "Rare",
+    preview: "○",
+    description: "은은한 백색 발광 링으로 말 주변을 강조합니다.",
+    price: 1500
+  },
+  {
+    id: "ring_ember_glow",
+    category: "tokenRing",
+    categoryLabel: "링",
+    label: "엠버 글로우 링",
+    rarity: "Rare",
+    preview: "○",
+    description: "엠버 경고등처럼 낮게 빛나는 링입니다.",
+    price: 1500
+  },
+  {
+    id: "ring_signal_glow",
+    category: "tokenRing",
+    categoryLabel: "링",
+    label: "시그널 글로우 링",
+    rarity: "Rare",
+    preview: "○",
+    description: "푸른 통신 신호가 번지는 듯한 링입니다.",
+    price: 1500
+  },
+  {
+    id: "ring_hazmat_glow",
+    category: "tokenRing",
+    categoryLabel: "링",
+    label: "해저드 글로우 링",
+    rarity: "Rare",
+    preview: "○",
+    description: "노란 경고등이 은은하게 도는 방호 링입니다.",
+    price: 1500
   },
   {
     id: "title_rookie",
@@ -864,12 +984,13 @@ function ensureLobbyShopPanelUi() {
     <div class="operation-panel-header">
       <span>Account Shop</span>
       <strong>상점</strong>
-      <p>게임 밸런스에 영향을 주지 않는 이름표, 채팅 말풍선, 말 스킨, 칭호만 판매합니다.</p>
+      <p>게임 밸런스에 영향을 주지 않는 프로필 카드, 채팅 말풍선, 말 스킨, 링, 칭호만 판매합니다.</p>
     </div>
     <div id="lobbyShopTabs" class="customize-category-tabs shop-category-tabs" role="tablist" aria-label="상점 분류">
       <button class="is-active" type="button" data-shop-category="all">전체</button>
-      <button type="button" data-shop-category="nameplate">이름표</button>
+      <button type="button" data-shop-category="nameplate">프로필 카드</button>
       <button type="button" data-shop-category="tokenSkin">말</button>
+      <button type="button" data-shop-category="tokenRing">링</button>
       <button type="button" data-shop-category="chatBubble">채팅</button>
       <button type="button" data-shop-category="title">칭호</button>
     </div>
@@ -903,12 +1024,13 @@ function ensureLobbyCustomizePanelUi() {
     <div class="operation-panel-header">
       <span>Operator Customize</span>
       <strong>커스터마이즈</strong>
-      <p>보유한 외형만 확인하고 현재 장착 중인 이름표, 채팅 효과, 말 스킨, 칭호를 변경합니다.</p>
+      <p>보유한 외형만 확인하고 현재 장착 중인 프로필 카드, 채팅 효과, 말 스킨, 링, 칭호를 변경합니다.</p>
     </div>
     <div id="lobbyCustomizeTabs" class="customize-category-tabs" role="tablist" aria-label="커스터마이즈 분류">
       <button class="is-active" type="button" data-cosmetic-category="all">전체</button>
-      <button type="button" data-cosmetic-category="nameplate">이름표</button>
+      <button type="button" data-cosmetic-category="nameplate">프로필 카드</button>
       <button type="button" data-cosmetic-category="tokenSkin">말</button>
+      <button type="button" data-cosmetic-category="tokenRing">링</button>
       <button type="button" data-cosmetic-category="chatBubble">채팅</button>
       <button type="button" data-cosmetic-category="title">칭호</button>
     </div>
@@ -1056,7 +1178,7 @@ function ensureLobbyShellUi() {
     </button>
     <button class="main-lobby-menu-button" type="button" data-lobby-menu="customize" data-mobile-label="외형">
       <span>커스터마이즈</span>
-      <small>보유한 이름표, 말 스킨, 채팅 효과를 확인합니다.</small>
+      <small>보유한 프로필 카드, 말 스킨, 링, 채팅 효과를 확인합니다.</small>
     </button>
     <button class="main-lobby-menu-button" type="button" data-lobby-menu="shop" data-mobile-label="상점">
       <span>상점</span>
@@ -1559,7 +1681,7 @@ const GUIDE_BOOK_PAGES = [
     points: [
       "킬과 탈출은 경험치와 RP를 올립니다.",
       "사망하면 RP가 소폭 감소합니다.",
-      "루팅 가치는 이름표, 말 스킨, 채팅 말풍선, 칭호 같은 외형 보상 구매에 사용합니다."
+      "루팅 가치는 프로필 카드, 말 스킨, 링, 채팅 말풍선, 칭호 같은 외형 보상 구매에 사용합니다."
     ]
   }
 ];
@@ -3593,6 +3715,7 @@ function createDefaultAccountRecord() {
         nameplate: "default",
         chatBubble: "default",
         tokenSkin: "default",
+        tokenRing: "default",
         title: "default"
       },
       owned: ["default"]
@@ -3653,7 +3776,7 @@ function ensureLobbyShopUi() {
         </div>
         <button id="cosmeticShopClose" class="icon-button" type="button" aria-label="상점 닫기">-</button>
       </header>
-      <p class="cosmetic-shop-note">밸런스에 영향을 주지 않는 이름표, 채팅 말풍선, 말 스킨, 칭호만 판매합니다.</p>
+      <p class="cosmetic-shop-note">밸런스에 영향을 주지 않는 프로필 카드, 채팅 말풍선, 말 스킨, 링, 칭호만 판매합니다.</p>
       <div id="cosmeticShopList" class="cosmetic-shop-list"></div>
     </section>
   `;
@@ -6609,6 +6732,10 @@ function renderCosmeticPreviewIcon(item) {
     return renderTokenSkinPreviewSvg(item, { compact: true });
   }
 
+  if (item.category === "tokenRing") {
+    return renderTokenRingPreviewSvg(item, { compact: true });
+  }
+
   return `<span>${escapeHtml(item.preview ?? item.categoryLabel)}</span>`;
 }
 
@@ -6768,6 +6895,14 @@ function renderCosmeticPreviewScene(item, account) {
     `;
   }
 
+  if (item.category === "tokenRing") {
+    return `
+      <div class="preview-token-field">
+        ${renderTokenRingPreviewSvg(item, { compact: false })}
+      </div>
+    `;
+  }
+
   return `
     <article class="preview-title-card">
       <span>${escapeHtml(item.preview ?? "TITLE")}</span>
@@ -6776,6 +6911,34 @@ function renderCosmeticPreviewScene(item, account) {
     </article>
   `;
 }
+
+function renderTokenRingPreviewSvg(item, { compact = false } = {}) {
+  const color = TOKEN_RING_PREVIEW_COLORS[item.id] ?? "#ffffff";
+
+  return `
+    <svg class="preview-token-svg ${compact ? "preview-token-svg--shop" : "preview-token-svg--large"}" viewBox="0 0 72 72" role="img" aria-label="${escapeHtml(item.label)}">
+      <defs>
+        <radialGradient id="${item.id}-${compact ? "s" : "l"}-ring-glow" cx="50%" cy="50%" r="52%">
+          <stop offset="0%" stop-color="${color}" stop-opacity="0.05"/>
+          <stop offset="72%" stop-color="${color}" stop-opacity="0.22"/>
+          <stop offset="100%" stop-color="${color}" stop-opacity="0"/>
+        </radialGradient>
+      </defs>
+      <circle cx="36" cy="36" r="31" fill="url(#${item.id}-${compact ? "s" : "l"}-ring-glow)"/>
+      <circle cx="36" cy="36" r="26" fill="rgba(5,8,8,0.72)" stroke="rgba(255,255,255,0.16)" stroke-width="1.2"/>
+      <circle cx="36" cy="36" r="31" fill="none" stroke="${color}" stroke-opacity="0.78" stroke-width="3"/>
+      <circle cx="36" cy="36" r="35" fill="none" stroke="${color}" stroke-opacity="0.24" stroke-width="2"/>
+      <text x="36" y="40.8" text-anchor="middle" fill="#f7f8ee" font-size="13" font-weight="900" font-family="Arial, sans-serif">1</text>
+    </svg>
+  `;
+}
+
+const TOKEN_RING_PREVIEW_COLORS = {
+  ring_white_glow: "#ffffff",
+  ring_ember_glow: "#ff9b4f",
+  ring_signal_glow: "#63c2ff",
+  ring_hazmat_glow: "#ffd457"
+};
 
 function renderTokenSkinPreviewSvg(item, { compact = false } = {}) {
   const variant = TOKEN_SKIN_PREVIEW_VARIANTS[item.id];
@@ -7012,8 +7175,9 @@ function getRankFromScore(score) {
 function getCosmeticCategoryLabel(category) {
   const labels = {
     all: "전체",
-    nameplate: "이름표",
+    nameplate: "프로필 카드",
     tokenSkin: "말 스킨",
+    tokenRing: "링",
     chatBubble: "채팅 말풍선",
     title: "칭호"
   };

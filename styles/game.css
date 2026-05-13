@@ -1127,8 +1127,8 @@ body {
 
 .floating-leave-game {
   position: fixed;
-  top: max(76px, calc(env(safe-area-inset-top) + 68px));
-  right: max(16px, env(safe-area-inset-right));
+  left: max(18px, env(safe-area-inset-left));
+  bottom: max(126px, calc(env(safe-area-inset-bottom) + 120px));
   z-index: 25;
   min-width: 104px;
   min-height: 36px;
@@ -2371,6 +2371,36 @@ button.room-slot-ready {
     linear-gradient(135deg, rgba(255, 98, 82, 0.18), transparent 38%),
     rgba(20, 8, 7, 0.7);
   box-shadow: 0 16px 42px rgba(0, 0, 0, 0.34), inset 4px 0 0 rgba(255, 98, 82, 0.72);
+}
+
+.lobby-account-card--nameplate_recon,
+.account-profile-card--nameplate_recon {
+  border-color: rgba(157, 198, 166, 0.54);
+  background:
+    radial-gradient(circle at 14% 18%, rgba(157, 198, 166, 0.22), transparent 28%),
+    repeating-linear-gradient(90deg, rgba(157, 198, 166, 0.08) 0 1px, transparent 1px 10px),
+    rgba(6, 15, 12, 0.78);
+  filter: drop-shadow(0 0 10px rgba(157, 198, 166, 0.16));
+}
+
+.lobby-account-card--nameplate_thermal,
+.account-profile-card--nameplate_thermal {
+  border-color: rgba(240, 163, 92, 0.56);
+  background:
+    linear-gradient(135deg, rgba(240, 163, 92, 0.2), transparent 38%),
+    repeating-linear-gradient(0deg, rgba(240, 163, 92, 0.08) 0 3px, transparent 3px 11px),
+    rgba(19, 9, 5, 0.78);
+  filter: drop-shadow(0 0 12px rgba(240, 163, 92, 0.16));
+}
+
+.lobby-account-card--nameplate_hazmat,
+.account-profile-card--nameplate_hazmat {
+  border-color: rgba(212, 196, 91, 0.58);
+  background:
+    linear-gradient(135deg, rgba(212, 196, 91, 0.2), transparent 36%),
+    repeating-linear-gradient(45deg, rgba(212, 196, 91, 0.12) 0 6px, transparent 6px 14px),
+    rgba(17, 16, 5, 0.78);
+  filter: drop-shadow(0 0 12px rgba(212, 196, 91, 0.18));
 }
 
 #startOverlayStatus {
@@ -4002,6 +4032,30 @@ dd {
   color: #ffd2ca;
 }
 
+.cosmetic-preview--nameplate_recon {
+  background:
+    repeating-linear-gradient(90deg, rgba(157, 198, 166, 0.12) 0 1px, transparent 1px 8px),
+    radial-gradient(circle at 50% 40%, rgba(157, 198, 166, 0.34), transparent 56%),
+    #071411;
+  color: #d7ffe1;
+}
+
+.cosmetic-preview--nameplate_thermal {
+  background:
+    repeating-linear-gradient(0deg, rgba(240, 163, 92, 0.12) 0 3px, transparent 3px 10px),
+    radial-gradient(circle at 50% 40%, rgba(240, 163, 92, 0.34), transparent 56%),
+    #170d08;
+  color: #ffd0a0;
+}
+
+.cosmetic-preview--nameplate_hazmat {
+  background:
+    repeating-linear-gradient(45deg, rgba(212, 196, 91, 0.14) 0 5px, transparent 5px 12px),
+    radial-gradient(circle at 50% 40%, rgba(212, 196, 91, 0.34), transparent 56%),
+    #171604;
+  color: #fff1a5;
+}
+
 .cosmetic-preview--chat_amber,
 .cosmetic-preview--token_ember {
   background:
@@ -4011,14 +4065,20 @@ dd {
 }
 
 .cosmetic-preview--chat_signal,
-.cosmetic-preview--token_signal_blue {
+.cosmetic-preview--token_signal_blue,
+.cosmetic-preview--token_signal_green,
+.cosmetic-preview--token_signal_violet,
+.cosmetic-preview--token_signal_rose {
   background:
     radial-gradient(circle at 50% 40%, rgba(99, 194, 255, 0.34), transparent 56%),
     #06121a;
   color: #c5ecff;
 }
 
-.cosmetic-preview--token_hazard {
+.cosmetic-preview--token_hazard,
+.cosmetic-preview--token_hazard_cyan,
+.cosmetic-preview--token_hazard_magenta,
+.cosmetic-preview--token_hazard_white {
   background:
     radial-gradient(circle at 50% 40%, rgba(255, 212, 87, 0.34), transparent 56%),
     #1a1505;
@@ -4081,7 +4141,10 @@ dd {
   color: #edffd2;
 }
 
-.cosmetic-preview--token_white_ring {
+.cosmetic-preview--ring_white_glow,
+.cosmetic-preview--ring_ember_glow,
+.cosmetic-preview--ring_signal_glow,
+.cosmetic-preview--ring_hazmat_glow {
   color: #ffffff;
 }
 
@@ -4324,19 +4387,34 @@ dd {
   box-shadow: 0 0 0 7px rgba(255, 153, 74, 0.24);
 }
 
-.preview-token--token_white_ring {
-  border-color: #fff;
-  background: #5d8588;
-  box-shadow: 0 0 0 7px rgba(255, 255, 255, 0.18);
-}
-
 .preview-token--token_signal_blue {
   border-color: #8ed8ff;
   background: #1b6f9b;
   box-shadow: 0 0 0 7px rgba(99, 194, 255, 0.22);
 }
 
-.preview-token--token_hazard {
+.preview-token--token_signal_green {
+  border-color: #9df5b7;
+  background: #2f8c55;
+  box-shadow: 0 0 0 7px rgba(117, 245, 151, 0.2);
+}
+
+.preview-token--token_signal_violet {
+  border-color: #c4a7ff;
+  background: #694aa8;
+  box-shadow: 0 0 0 7px rgba(178, 135, 255, 0.2);
+}
+
+.preview-token--token_signal_rose {
+  border-color: #ffadc6;
+  background: #a84668;
+  box-shadow: 0 0 0 7px rgba(255, 118, 158, 0.2);
+}
+
+.preview-token--token_hazard,
+.preview-token--token_hazard_cyan,
+.preview-token--token_hazard_magenta,
+.preview-token--token_hazard_white {
   border-color: #ffd457;
   border-radius: 12px;
   background: #8a6b1b;
@@ -4344,7 +4422,29 @@ dd {
   transform: rotate(45deg);
 }
 
-.preview-token--token_hazard::first-letter {
+.preview-token--token_hazard_cyan {
+  border-color: #6ff4ff;
+  background: #176d76;
+  box-shadow: 0 0 0 7px rgba(111, 244, 255, 0.2);
+}
+
+.preview-token--token_hazard_magenta {
+  border-color: #ff8fe0;
+  background: #823061;
+  box-shadow: 0 0 0 7px rgba(255, 101, 210, 0.2);
+}
+
+.preview-token--token_hazard_white {
+  border-color: #ffffff;
+  background: #d8d9cf;
+  color: #26302b;
+  box-shadow: 0 0 0 7px rgba(255, 255, 255, 0.18);
+}
+
+.preview-token--token_hazard::first-letter,
+.preview-token--token_hazard_cyan::first-letter,
+.preview-token--token_hazard_magenta::first-letter,
+.preview-token--token_hazard_white::first-letter {
   transform: rotate(-45deg);
 }
 
@@ -5622,10 +5722,8 @@ dd {
   }
 
   .floating-leave-game {
-    top: auto;
-    right: auto;
-    left: max(12px, env(safe-area-inset-left));
-    bottom: max(92px, calc(env(safe-area-inset-bottom) + 86px));
+    left: max(10px, env(safe-area-inset-left));
+    bottom: max(96px, calc(env(safe-area-inset-bottom) + 88px));
   }
 
   .raid-progress-hud {
