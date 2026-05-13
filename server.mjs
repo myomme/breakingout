@@ -12,11 +12,13 @@ const clients = new Set();
 let rooms = [];
 const snapshots = new Map();
 const chatMessagesByRoom = new Map();
+const supportReports = [];
 const LOBBY_CHAT_ROOM_ID = "global_lobby";
 const ROOM_TTL_MS = 12 * 60 * 60 * 1000;
 const ROOM_PRESENCE_TTL_MS = 2 * 60 * 1000;
 const ROOM_RECONNECT_GRACE_MS = 5 * 60 * 1000;
 const MAX_CHAT_MESSAGES = 80;
+const MAX_SUPPORT_REPORTS = 200;
 const ACCOUNT_DB_PATH = process.env.ACCOUNT_DB_PATH
   ? path.resolve(process.env.ACCOUNT_DB_PATH)
   : path.join(__dirname, "data", "serverAccounts.json");
@@ -75,6 +77,21 @@ const server = http.createServer(async (request, response) => {
 
     if (url.pathname === "/admin/accounts/delete") {
       await handleAdminAccountDeleteRequest(request, response, url);
+      return;
+    }
+
+    if (url.pathname === "/admin/accounts/adjust") {
+      await handleAdminAccountAdjustRequest(request, response, url);
+      return;
+    }
+
+    if (url.pathname === "/admin/notice") {
+      await handleAdminNoticeRequest(request, response, url);
+      return;
+    }
+
+    if (url.pathname === "/admin/reports") {
+      handleAdminReportsRequest(request, response, url);
       return;
     }
 
@@ -245,7 +262,7 @@ function handleAdminAccountsRequest(request, response, url) {
 
   if (!wantsJson(url)) {
     response.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
-    response.end(renderAdminAccountsPage({
+    response.end(renderAdminDashboardPage({
       key: url.searchParams.get("key") ?? "",
       rows,
       ghostRows
@@ -289,6 +306,7 @@ async function handleAdminAccountDeleteRequest(request, response, url) {
   accounts.delete(accountId);
   removeAccountFromRooms(accountId);
   await saveAccounts();
+  broadcastAccountDeleted(accountId, "운영자가 계정을 정지(삭제)했습니다.");
 
   if (redirect) {
     response.writeHead(303, { Location: `/admin/accounts?key=${encodeURIComponent(url.searchParams.get("key") ?? "")}` });
@@ -298,6 +316,121 @@ async function handleAdminAccountDeleteRequest(request, response, url) {
 
   response.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
   response.end(JSON.stringify({ ok: true, deleted: accountId }));
+}
+
+async function handleAdminAccountAdjustRequest(request, response, url) {
+  if (!isAdminAuthorized(request, url)) {
+    sendAdminDenied(response, true);
+    return;
+  }
+
+  if (request.method !== "POST") {
+    response.writeHead(405, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+    response.end(JSON.stringify({ ok: false, message: "Method Not Allowed" }));
+    return;
+  }
+
+  const body = await readRequestBody(request);
+  const params = new URLSearchParams(body);
+  const accountId = String(params.get("accountId") ?? "").trim();
+  const redirect = params.get("redirect") === "1";
+  const account = accounts.has(accountId) ? normalizeAccount(accounts.get(accountId), accountId) : null;
+
+  if (!account) {
+    response.writeHead(404, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+    response.end(JSON.stringify({ ok: false, message: "Account not found" }));
+    return;
+  }
+
+  applyAdminNumberDelta(account.wallet, "spendableValue", params.get("spendableDelta"), -1_000_000, 1_000_000);
+  applyAdminNumberDelta(account.wallet, "lifetimeLootValue", params.get("lifetimeDelta"), -1_000_000, 1_000_000);
+  applyAdminNumberDelta(account.stats, "rankScore", params.get("rankDelta"), -100_000, 100_000);
+  applyAdminNumberDelta(account.stats, "experience", params.get("experienceDelta"), -100_000, 100_000);
+
+  const grantItem = String(params.get("grantItem") ?? "").trim();
+  const catalogItem = grantItem ? getCosmeticCatalog().find((item) => item.id === grantItem) : null;
+  if (catalogItem) {
+    const owned = new Set(account.cosmetics.owned ?? ["default"]);
+    owned.add(catalogItem.id);
+    account.cosmetics.owned = Array.from(owned);
+  }
+
+  account.wallet.spendableValue = Math.max(0, Number(account.wallet.spendableValue ?? 0));
+  account.wallet.lifetimeLootValue = Math.max(0, Number(account.wallet.lifetimeLootValue ?? 0));
+  account.stats.rankScore = Math.max(0, Number(account.stats.rankScore ?? 0));
+  account.stats.experience = Math.max(0, Number(account.stats.experience ?? 0));
+  account.updatedAt = Date.now();
+  accounts.set(accountId, account);
+  syncAccountCosmeticsToRooms(accountId, account.cosmetics);
+  await saveAccounts();
+  sendAccountUpdatedToPlayer(accountId, account);
+  broadcastRooms("adminAccountAdjust");
+
+  if (redirect) {
+    response.writeHead(303, { Location: `/admin/accounts?key=${encodeURIComponent(url.searchParams.get("key") ?? "")}` });
+    response.end();
+    return;
+  }
+
+  response.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+  response.end(JSON.stringify({ ok: true, account: sanitizeAccountForClient(account) }));
+}
+
+async function handleAdminNoticeRequest(request, response, url) {
+  if (!isAdminAuthorized(request, url)) {
+    sendAdminDenied(response, true);
+    return;
+  }
+
+  if (request.method !== "POST") {
+    response.writeHead(405, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+    response.end(JSON.stringify({ ok: false, message: "Method Not Allowed" }));
+    return;
+  }
+
+  const body = await readRequestBody(request);
+  const params = new URLSearchParams(body);
+  const text = String(params.get("message") ?? "").replace(/\s+/g, " ").trim().slice(0, 260);
+  const redirect = params.get("redirect") === "1";
+
+  if (!text) {
+    response.writeHead(400, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+    response.end(JSON.stringify({ ok: false, message: "Notice message required" }));
+    return;
+  }
+
+  broadcast({
+    type: "adminNotice",
+    sourceId: "server",
+    message: text,
+    durationMs: 10000,
+    at: Date.now()
+  });
+
+  if (redirect) {
+    response.writeHead(303, { Location: `/admin/accounts?key=${encodeURIComponent(url.searchParams.get("key") ?? "")}` });
+    response.end();
+    return;
+  }
+
+  response.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+  response.end(JSON.stringify({ ok: true }));
+}
+
+function handleAdminReportsRequest(request, response, url) {
+  if (!isAdminAuthorized(request, url)) {
+    sendAdminDenied(response, wantsJson(url));
+    return;
+  }
+
+  response.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+  response.end(JSON.stringify({ ok: true, reports: supportReports }, null, 2));
+}
+
+function applyAdminNumberDelta(target, key, rawValue, min, max) {
+  const delta = Math.max(min, Math.min(max, Math.trunc(Number(rawValue ?? 0) || 0)));
+  if (!delta) return;
+  target[key] = Number(target[key] ?? 0) + delta;
 }
 
 function isAdminAuthorized(request, url) {
@@ -349,6 +482,165 @@ function getAccountAdminFlags(account) {
   if (incomplete) flags.push("local-only");
   if (sessions.length > 0) flags.push("active-session");
   return flags;
+}
+
+function renderAdminDashboardPage({ key, rows, ghostRows }) {
+  const totals = {
+    accounts: rows.length,
+    ghosts: ghostRows.length,
+    completed: rows.reduce((sum, row) => sum + Number(row.stats?.gamesCompleted ?? 0), 0),
+    value: rows.reduce((sum, row) => sum + Number(row.wallet?.lifetimeLootValue ?? 0), 0),
+    reports: supportReports.length
+  };
+  const catalogOptions = getCosmeticCatalog()
+    .map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.category)} / ${escapeHtml(item.id)}</option>`)
+    .join("");
+
+  return `<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Breaking Out Admin</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, "Segoe UI", sans-serif; background: #080b0b; color: #f4f1e8; }
+    body { margin: 0; background: #080b0b; }
+    main { width: min(1320px, calc(100vw - 32px)); margin: 0 auto; padding: 28px 0 44px; }
+    header { display: flex; justify-content: space-between; gap: 16px; align-items: end; border-bottom: 1px solid rgba(236,224,196,.16); padding-bottom: 18px; }
+    h1 { margin: 0; font-size: 30px; }
+    h2 { margin: 0 0 8px; font-size: 18px; }
+    p { margin: 6px 0 0; color: rgba(244,241,232,.64); }
+    .stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin: 18px 0; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+    .stat, .panel { border: 1px solid rgba(236,224,196,.14); border-radius: 8px; background: rgba(255,255,255,.045); padding: 14px; }
+    .stat span, th { color: rgba(244,241,232,.58); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
+    .stat strong { display: block; margin-top: 6px; font-size: 24px; }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+    textarea { width: 100%; min-height: 86px; resize: vertical; padding: 10px; }
+    input, select, textarea, button { min-height: 34px; border: 1px solid rgba(236,224,196,.18); border-radius: 6px; background: rgba(255,255,255,.07); color: #f4f1e8; padding: 0 10px; font: inherit; box-sizing: border-box; }
+    button { cursor: pointer; }
+    .primary { border-color: rgba(185,232,109,.34); background: rgba(185,232,109,.12); color: #eaffbf; }
+    button.danger { border-color: rgba(255,98,82,.44); background: rgba(255,98,82,.12); color: #ffd8d0; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border-bottom: 1px solid rgba(236,224,196,.1); padding: 10px 8px; text-align: left; vertical-align: top; }
+    td small { display: block; color: rgba(244,241,232,.58); margin-top: 3px; }
+    .account-actions { display: grid; gap: 8px; min-width: 280px; }
+    .adjust-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+    .adjust-form select, .adjust-form button { grid-column: 1 / -1; }
+    .report-list { display: grid; gap: 8px; max-height: 310px; overflow: auto; }
+    .report { border: 1px solid rgba(236,224,196,.12); border-radius: 8px; padding: 10px; background: rgba(0,0,0,.16); }
+    .report strong { display: flex; justify-content: space-between; gap: 8px; }
+    .report p { color: #f4f1e8; white-space: pre-wrap; }
+    .flags { display: flex; flex-wrap: wrap; gap: 4px; }
+    .flag { border: 1px solid rgba(185,232,109,.24); border-radius: 999px; padding: 2px 7px; color: #dff4b5; font-size: 11px; }
+    .flag.ghost { border-color: rgba(255,98,82,.42); color: #ffd8d0; }
+    @media (max-width: 900px) { .grid, .stats { grid-template-columns: 1fr; } table { font-size: 12px; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>운영자 관리 페이지</h1>
+        <p>계정 삭제, 보상 지급, 전체 공지, 신고 및 건의 사항을 한 화면에서 처리합니다.</p>
+      </div>
+      <a style="color:#dff4b5" href="/admin/accounts?format=json&key=${escapeHtml(key)}">JSON</a>
+    </header>
+    <section class="stats">
+      <article class="stat"><span>Accounts</span><strong>${totals.accounts}</strong></article>
+      <article class="stat"><span>Ghosts</span><strong>${totals.ghosts}</strong></article>
+      <article class="stat"><span>Completed</span><strong>${totals.completed}</strong></article>
+      <article class="stat"><span>Lifetime Value</span><strong>${totals.value}</strong></article>
+      <article class="stat"><span>Reports</span><strong>${totals.reports}</strong></article>
+    </section>
+    <section class="grid">
+      <article class="panel">
+        <h2>전체 공지</h2>
+        <p>모든 접속자 화면 최상단에 10초 동안 팝업이 표시됩니다.</p>
+        <form method="post" action="/admin/notice?key=${encodeURIComponent(key)}">
+          <input type="hidden" name="redirect" value="1">
+          <textarea name="message" maxlength="260" placeholder="잠시 후 서버를 임시 점검할 예정입니다. 게임 중인 플레이어는 참고 바랍니다."></textarea>
+          <div class="toolbar"><button class="primary" type="submit">공지 발송</button></div>
+        </form>
+      </article>
+      <article class="panel">
+        <h2>신고 및 건의</h2>
+        <div class="report-list">
+          ${supportReports.slice(0, 8).map(renderAdminReport).join("") || "<p>접수된 신고 및 건의가 없습니다.</p>"}
+        </div>
+        <p><a style="color:#dff4b5" href="/admin/reports?format=json&key=${escapeHtml(key)}">전체 신고 JSON 보기</a></p>
+      </article>
+    </section>
+    <section class="panel">
+      <div class="toolbar">
+        <input id="search" type="search" placeholder="계정, 닉네임 검색">
+        <select id="filter"><option value="all">전체</option><option value="ghost">유령 계정</option><option value="stale">오래된 계정</option><option value="active-session">접속 세션</option></select>
+      </div>
+      <table>
+        <thead><tr><th>계정</th><th>전적</th><th>가치</th><th>상태</th><th>관리</th></tr></thead>
+        <tbody>${rows.map((row) => renderAdminDashboardRow(row, key, catalogOptions)).join("")}</tbody>
+      </table>
+    </section>
+  </main>
+  <script>
+    const search = document.querySelector("#search");
+    const filter = document.querySelector("#filter");
+    function applyFilters() {
+      const q = search.value.toLowerCase();
+      const f = filter.value;
+      document.querySelectorAll("tbody tr").forEach((row) => {
+        const hay = row.dataset.search;
+        const flags = row.dataset.flags;
+        row.hidden = (q && !hay.includes(q)) || (f !== "all" && !flags.includes(f));
+      });
+    }
+    search.addEventListener("input", applyFilters);
+    filter.addEventListener("change", applyFilters);
+    document.querySelectorAll("form[data-delete]").forEach((form) => {
+      form.addEventListener("submit", (event) => {
+        const name = form.dataset.delete;
+        if (!confirm(name + " 계정을 삭제할까요? 접속 중인 유저는 즉시 튕깁니다.")) event.preventDefault();
+      });
+    });
+  </script>
+</body>
+</html>`;
+}
+
+function renderAdminReport(report) {
+  return `<article class="report">
+    <strong><span>${escapeHtml(report.category)}</span><time>${new Date(report.at ?? 0).toLocaleString("ko-KR")}</time></strong>
+    <small>${escapeHtml(report.nickname)} / ${escapeHtml(report.accountId)} ${report.roomId ? `/ 방 ${escapeHtml(report.roomId)}` : ""}</small>
+    <p>${escapeHtml(report.text)}</p>
+  </article>`;
+}
+
+function renderAdminDashboardRow(row, key, catalogOptions) {
+  const flags = row.flags ?? [];
+  const search = `${row.accountId} ${row.username ?? ""} ${row.nickname ?? ""}`.toLowerCase();
+  return `<tr data-search="${escapeHtml(search)}" data-flags="${escapeHtml(flags.join(" "))}">
+    <td><strong>${escapeHtml(row.nickname)}</strong><small>${escapeHtml(row.accountId)}</small><small>${escapeHtml(row.username ?? "-")}</small></td>
+    <td>${Number(row.stats?.gamesCompleted ?? 0)} 완료 / ${Number(row.stats?.wins ?? 0)} 승<small>K ${Number(row.stats?.kills ?? 0)} / D ${Number(row.stats?.deaths ?? 0)} / RP ${Number(row.stats?.rankScore ?? 0)}</small></td>
+    <td>${Number(row.wallet?.spendableValue ?? 0)} 보유<small>누적 ${Number(row.wallet?.lifetimeLootValue ?? 0)} / 소비 ${Number(row.wallet?.spentValue ?? 0)}</small></td>
+    <td><div class="flags">${flags.map((flag) => `<span class="flag ${flag}">${flag}</span>`).join("") || "<span class=\"flag\">normal</span>"}</div><small>${new Date(row.updatedAt ?? 0).toLocaleString("ko-KR")}</small></td>
+    <td class="account-actions">
+      <form class="adjust-form" method="post" action="/admin/accounts/adjust?key=${encodeURIComponent(key)}">
+        <input type="hidden" name="accountId" value="${escapeHtml(row.accountId)}">
+        <input type="hidden" name="redirect" value="1">
+        <input name="spendableDelta" type="number" step="1" placeholder="보유 가치 +/-">
+        <input name="lifetimeDelta" type="number" step="1" placeholder="누적 가치 +/-">
+        <input name="rankDelta" type="number" step="1" placeholder="RP +/-">
+        <input name="experienceDelta" type="number" step="1" placeholder="EXP +/-">
+        <select name="grantItem"><option value="">외형 지급 없음</option>${catalogOptions}</select>
+        <button class="primary" type="submit">보상/수정 적용</button>
+      </form>
+      <form method="post" action="/admin/accounts/delete?key=${encodeURIComponent(key)}" data-delete="${escapeHtml(row.nickname)}">
+        <input type="hidden" name="accountId" value="${escapeHtml(row.accountId)}">
+        <input type="hidden" name="redirect" value="1">
+        <button class="danger" type="submit">계정 삭제</button>
+      </form>
+    </td>
+  </tr>`;
 }
 
 function renderAdminAccountsPage({ key, rows, ghostRows }) {
@@ -482,7 +774,17 @@ function removeAccountFromRooms(accountId) {
   rooms.forEach((room) => {
     room.slots = normalizeServerSlots(room.slots).map((slot) => (
       slot.type === "player" && slot.playerId === accountId
-        ? { type: "open", weaponId: slot.weaponId ?? "AR", armorId: slot.armorId ?? "lightSet" }
+        ? room.status === "inProgress"
+          ? {
+              type: "computer",
+              weaponId: slot.weaponId ?? "AR",
+              armorId: slot.armorId ?? "lightSet",
+              takeoverFromPlayerId: slot.playerId,
+              takeoverName: slot.nickname,
+              takeoverAt: Date.now(),
+              removedByAdmin: true
+            }
+          : { type: "open", weaponId: slot.weaponId ?? "AR", armorId: slot.armorId ?? "lightSet" }
         : slot
     ));
     if (room.hostId === accountId) {
@@ -493,6 +795,37 @@ function removeAccountFromRooms(accountId) {
   });
   rooms = rooms.filter((room) => room.hostId && room.players.length > 0);
   broadcastRooms("adminDeleteAccount");
+}
+
+function broadcastAccountDeleted(accountId, message) {
+  const payload = {
+    type: "accountDeleted",
+    sourceId: "server",
+    targetPlayerId: accountId,
+    message,
+    at: Date.now()
+  };
+
+  clients.forEach((client) => {
+    if (client.playerId === accountId) {
+      sendJson(client, payload);
+    }
+  });
+}
+
+function sendAccountUpdatedToPlayer(accountId, account) {
+  const payload = {
+    type: "accountUpdated",
+    sourceId: "server",
+    account: sanitizeAccountForClient(account),
+    at: Date.now()
+  };
+
+  clients.forEach((client) => {
+    if (client.playerId === accountId) {
+      sendJson(client, payload);
+    }
+  });
 }
 
 function markClientDisconnected(client) {
@@ -516,6 +849,31 @@ function markClientDisconnected(client) {
   if (changed) {
     broadcastRooms("playerDisconnected");
   }
+}
+
+function handleSupportReport(client, message) {
+  const text = String(message.text ?? "").replace(/\s+/g, " ").trim().slice(0, 1000);
+  const category = String(message.category ?? "bug").trim().slice(0, 40);
+  if (!text) {
+    sendJson(client, { type: "supportReportResult", sourceId: "server", ok: false, message: "내용을 입력해 주세요.", at: Date.now() });
+    return;
+  }
+
+  const account = message.sourceId ? accounts.get(String(message.sourceId)) : null;
+  const report = {
+    id: crypto.randomUUID(),
+    category,
+    text,
+    accountId: String(message.sourceId ?? ""),
+    nickname: account?.nickname ?? String(message.nickname ?? "Player").slice(0, 18),
+    roomId: message.roomId ?? null,
+    gameStarted: Boolean(message.gameStarted),
+    userAgent: String(message.userAgent ?? "").slice(0, 180),
+    at: Date.now()
+  };
+  supportReports.unshift(report);
+  supportReports.splice(MAX_SUPPORT_REPORTS);
+  sendJson(client, { type: "supportReportResult", sourceId: "server", ok: true, reportId: report.id, message: "신고 및 건의가 접수되었습니다.", at: Date.now() });
 }
 
 function handleLeaderboardRequest(response) {
@@ -627,6 +985,11 @@ function handleMessage(client, message) {
 
   if (message.type === "accountAction") {
     handleAccountAction(client, message);
+    return;
+  }
+
+  if (message.type === "supportReport") {
+    handleSupportReport(client, message);
     return;
   }
 
@@ -1632,6 +1995,9 @@ function reconnectTakeoverSlot(room, playerId) {
   if (index < 0) return false;
 
   const slot = room.slots[index];
+  if (slot.removedByAdmin || !accounts.has(playerId)) {
+    return false;
+  }
   const account = getAccountRecord(playerId, slot.takeoverName ?? "Player");
   room.slots[index] = {
     slotIndex: index,

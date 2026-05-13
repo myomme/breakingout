@@ -207,6 +207,15 @@ let beginnerHelpSpotlight = null;
 let beginnerContextHint = null;
 let raidOrderOverlay = null;
 let raidOrderStage = null;
+let adminNoticeOverlay = null;
+let adminNoticeText = null;
+let adminNoticeTimer = 0;
+let supportReportButton = null;
+let supportReportOverlay = null;
+let supportReportCategory = null;
+let supportReportText = null;
+let supportReportError = null;
+let supportReportSubmit = null;
 let audioUnlocked = false;
 let audioUnlockBound = false;
 const queuedSounds = [];
@@ -927,6 +936,8 @@ function initStartOverlay() {
   ensureLobbyShopPanelUi();
   ensureLobbyCustomizePanelUi();
   ensureOperationPanelUi();
+  ensureAdminNoticeUi();
+  ensureSupportReportUi();
   bindLobbyEvents();
   startGameButton.addEventListener("click", handleStartGame);
   bootstrap().catch((error) => {
@@ -1369,6 +1380,159 @@ function closeLobbyInfoPanel() {
   if (lobbyInfoOverlay) {
     lobbyInfoOverlay.hidden = true;
   }
+}
+
+function ensureAdminNoticeUi() {
+  if (adminNoticeOverlay || document.querySelector("#adminNoticeOverlay")) {
+    adminNoticeOverlay = document.querySelector("#adminNoticeOverlay");
+    adminNoticeText = document.querySelector("#adminNoticeText");
+    return;
+  }
+
+  adminNoticeOverlay = document.createElement("div");
+  adminNoticeOverlay.id = "adminNoticeOverlay";
+  adminNoticeOverlay.className = "admin-notice-overlay";
+  adminNoticeOverlay.hidden = true;
+  adminNoticeOverlay.innerHTML = `
+    <section class="admin-notice-panel" role="alert" aria-live="assertive">
+      <span>운영자 공지</span>
+      <strong id="adminNoticeText"></strong>
+    </section>
+  `;
+  document.body.append(adminNoticeOverlay);
+  adminNoticeText = adminNoticeOverlay.querySelector("#adminNoticeText");
+}
+
+function showAdminNotice(message, durationMs = 10000) {
+  ensureAdminNoticeUi();
+  if (!adminNoticeOverlay || !adminNoticeText) {
+    return;
+  }
+
+  adminNoticeText.textContent = message || "운영자 공지입니다.";
+  adminNoticeOverlay.hidden = false;
+  window.clearTimeout(adminNoticeTimer);
+  adminNoticeTimer = window.setTimeout(() => {
+    adminNoticeOverlay.hidden = true;
+  }, Math.max(1500, Number(durationMs) || 10000));
+}
+
+function ensureSupportReportUi() {
+  if (supportReportOverlay || document.querySelector("#supportReportOverlay")) {
+    supportReportButton = document.querySelector("#supportReportButton");
+    supportReportOverlay = document.querySelector("#supportReportOverlay");
+    supportReportCategory = document.querySelector("#supportReportCategory");
+    supportReportText = document.querySelector("#supportReportText");
+    supportReportError = document.querySelector("#supportReportError");
+    supportReportSubmit = document.querySelector("#supportReportSubmit");
+    return;
+  }
+
+  supportReportButton = document.createElement("button");
+  supportReportButton.id = "supportReportButton";
+  supportReportButton.className = "support-report-button";
+  supportReportButton.type = "button";
+  supportReportButton.setAttribute("aria-label", "신고 및 건의");
+  supportReportButton.innerHTML = `<span>!</span>`;
+
+  supportReportOverlay = document.createElement("div");
+  supportReportOverlay.id = "supportReportOverlay";
+  supportReportOverlay.className = "support-report-overlay";
+  supportReportOverlay.hidden = true;
+  supportReportOverlay.innerHTML = `
+    <div class="support-report-backdrop" data-support-report-close="true"></div>
+    <section class="support-report-panel" role="dialog" aria-modal="true" aria-labelledby="supportReportTitle">
+      <header class="support-report-header">
+        <span>Support</span>
+        <h2 id="supportReportTitle">신고 및 건의</h2>
+        <button type="button" data-support-report-close="true" aria-label="닫기">-</button>
+      </header>
+      <label>
+        <span>분류</span>
+        <select id="supportReportCategory">
+          <option value="bug">버그 제보</option>
+          <option value="disconnect">억울한 튕김</option>
+          <option value="abuse">비매너 신고</option>
+          <option value="suggestion">건의 사항</option>
+        </select>
+      </label>
+      <label>
+        <span>내용</span>
+        <textarea id="supportReportText" maxlength="1000" placeholder="상황, 방 번호, 발생 시점 등을 적어주세요."></textarea>
+      </label>
+      <p id="supportReportError" class="support-report-error" hidden></p>
+      <button id="supportReportSubmit" type="button">접수하기</button>
+    </section>
+  `;
+
+  document.body.append(supportReportButton, supportReportOverlay);
+  supportReportCategory = supportReportOverlay.querySelector("#supportReportCategory");
+  supportReportText = supportReportOverlay.querySelector("#supportReportText");
+  supportReportError = supportReportOverlay.querySelector("#supportReportError");
+  supportReportSubmit = supportReportOverlay.querySelector("#supportReportSubmit");
+
+  supportReportButton.addEventListener("click", openSupportReportPanel);
+  supportReportOverlay.addEventListener("click", (event) => {
+    if (event.target.closest("[data-support-report-close]")) {
+      closeSupportReportPanel();
+    }
+  });
+  supportReportSubmit?.addEventListener("click", submitSupportReport);
+}
+
+function openSupportReportPanel() {
+  ensureSupportReportUi();
+  if (!supportReportOverlay) {
+    return;
+  }
+  if (supportReportError) {
+    supportReportError.hidden = true;
+    supportReportError.textContent = "";
+  }
+  supportReportOverlay.hidden = false;
+  supportReportText?.focus();
+}
+
+function closeSupportReportPanel() {
+  if (supportReportOverlay) {
+    supportReportOverlay.hidden = true;
+  }
+}
+
+function submitSupportReport() {
+  const text = supportReportText?.value.trim() ?? "";
+  if (!text) {
+    showSupportReportMessage("내용을 입력해 주세요.", true);
+    return;
+  }
+
+  const sent = sendServerMessage({
+    type: "supportReport",
+    sourceId: lobbySession.localPlayerId,
+    nickname: lobbySession.nickname,
+    category: supportReportCategory?.value ?? "bug",
+    text,
+    roomId: lobbySession.currentRoom?.id ?? null,
+    gameStarted,
+    userAgent: navigator.userAgent,
+    at: Date.now()
+  });
+
+  if (!sent) {
+    showSupportReportMessage("서버 연결 후 접수할 수 있습니다.", true);
+    return;
+  }
+
+  showSupportReportMessage("접수 중입니다.", false);
+}
+
+function showSupportReportMessage(message, isError = false) {
+  if (!supportReportError) {
+    return;
+  }
+  supportReportError.textContent = message;
+  supportReportError.hidden = false;
+  supportReportError.classList.toggle("is-error", isError);
 }
 
 function getLobbyInfoTitle(type) {
@@ -4087,6 +4251,54 @@ function handleServerAccountUpdated(account) {
   applyLocalCosmeticsToPlayers();
 }
 
+function handleAccountDeletedByAdmin(message) {
+  if (message.targetPlayerId && message.targetPlayerId !== lobbySession.localPlayerId) {
+    return;
+  }
+
+  forceExitToLogin(message.message || "운영자가 계정을 정지(삭제)했습니다.");
+}
+
+function forceExitToLogin(message) {
+  stopRaidAutoAdvance();
+  closeCorpseLoot("admin-account-delete");
+  gameStarted = false;
+  gameStarting = false;
+  if (floatingLeaveGameButton) {
+    floatingLeaveGameButton.hidden = true;
+  }
+  if (floatingEndTurnButton) {
+    floatingEndTurnButton.hidden = true;
+  }
+  if (raidSummaryOverlay) {
+    raidSummaryOverlay.hidden = true;
+  }
+  if (startOverlay) {
+    startOverlay.hidden = false;
+  }
+  clearAccountSession();
+  forgetCurrentRoom();
+  lobbySession = createEmptyLobbySession();
+  lobbySession.localPlayerId = getSessionPlayerId();
+  if (accountIdInput) accountIdInput.value = "";
+  if (accountPasswordInput) accountPasswordInput.value = "";
+  if (nicknameInput) nicknameInput.value = "";
+  showLobbyStep("login");
+  renderLobby();
+  showAdminNotice(message, 10000);
+  setStartStatus(message);
+}
+
+function handleSupportReportResult(message) {
+  showSupportReportMessage(message.message || (message.ok ? "접수되었습니다." : "접수에 실패했습니다."), !message.ok);
+  if (message.ok) {
+    if (supportReportText) {
+      supportReportText.value = "";
+    }
+    window.setTimeout(closeSupportReportPanel, 900);
+  }
+}
+
 function syncLocalRoomCosmetics(cosmetics) {
   if (!lobbySession.currentRoom?.slots?.length) {
     return;
@@ -4233,8 +4445,23 @@ function handleServerMessage(message) {
     return;
   }
 
+  if (message.type === "accountDeleted") {
+    handleAccountDeletedByAdmin(message);
+    return;
+  }
+
+  if (message.type === "adminNotice") {
+    showAdminNotice(message.message, message.durationMs);
+    return;
+  }
+
   if (message.type === "accountRejected") {
     setStartStatus(`계정 저장 실패: ${message.message ?? "알 수 없는 오류"}`);
+    return;
+  }
+
+  if (message.type === "supportReportResult") {
+    handleSupportReportResult(message);
     return;
   }
 
