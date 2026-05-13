@@ -255,6 +255,31 @@ export class GameRenderer {
     this.camera.y = rect.height / 2 - (bounds.minY + bounds.height / 2) * this.camera.zoom;
   }
 
+  fitMapToView() {
+    const bounds = this.getWorldBounds();
+    const rect = this.canvas.getBoundingClientRect();
+    const zoomX = rect.width / Math.max(1, bounds.width);
+    const zoomY = rect.height / Math.max(1, bounds.height);
+
+    this.camera.zoom = clamp(Math.min(zoomX, zoomY) * 0.84, 0.12, 2.5);
+    this.camera.x = rect.width / 2 - (bounds.minX + bounds.width / 2) * this.camera.zoom;
+    this.camera.y = rect.height / 2 - (bounds.minY + bounds.height / 2) * this.camera.zoom;
+  }
+
+  centerOnPlayer(player, { zoom = this.getDefaultGameplayZoom() } = {}) {
+    if (!player?.position) {
+      this.centerCamera();
+      return;
+    }
+
+    const rect = this.canvas.getBoundingClientRect();
+    const center = this.hexToWorld(player.position);
+
+    this.camera.zoom = clamp(zoom, 0.18, 2.5);
+    this.camera.x = rect.width / 2 - center.x * this.camera.zoom;
+    this.camera.y = rect.height / 2 - center.y * this.camera.zoom;
+  }
+
   getDefaultGameplayZoom() {
     return this.isMobileViewport ? 0.68 : 0.9;
   }
@@ -642,42 +667,51 @@ export class GameRenderer {
       const detailLevel = this.getTokenDetailLevel();
       const fillColor = getPlayerTokenFill({ active, attackable, hitFlash, tokenSkin });
       const strokeColor = getPlayerTokenStroke({ active, tokenSkin });
+      const advancedToken = TOKEN_SKIN_STYLES[tokenSkin];
 
-      this.ctx.beginPath();
-      this.ctx.arc(center.x, center.y, tokenRadius, 0, Math.PI * 2);
-      this.ctx.fillStyle = fillColor;
-      this.ctx.fill();
-      this.ctx.strokeStyle = strokeColor;
-      this.ctx.lineWidth = active ? 3 : 2.2;
-      this.ctx.stroke();
-
-      if (tokenSkin === "token_ember") {
+      if (advancedToken) {
+        drawDemoScaleToken(this.ctx, center, tokenRadius, tokenSkin, String(index + 1), {
+          attackable,
+          hitFlash,
+          detailLevel
+        });
+      } else {
         this.ctx.beginPath();
-        this.ctx.arc(center.x, center.y, tokenRadius + 3, 0, Math.PI * 2);
-        this.ctx.strokeStyle = "rgba(255, 153, 74, 0.48)";
-        this.ctx.lineWidth = 2;
+        this.ctx.arc(center.x, center.y, tokenRadius, 0, Math.PI * 2);
+        this.ctx.fillStyle = fillColor;
+        this.ctx.fill();
+        this.ctx.strokeStyle = strokeColor;
+        this.ctx.lineWidth = active ? 3 : 2.2;
         this.ctx.stroke();
-      }
 
-      if (tokenSkin === "token_signal_blue") {
-        this.ctx.beginPath();
-        this.ctx.arc(center.x, center.y, tokenRadius + 4, 0, Math.PI * 2);
-        this.ctx.strokeStyle = "rgba(99, 194, 255, 0.58)";
-        this.ctx.lineWidth = 2;
-        this.ctx.stroke();
-      }
+        if (tokenSkin === "token_ember") {
+          this.ctx.beginPath();
+          this.ctx.arc(center.x, center.y, tokenRadius + 3, 0, Math.PI * 2);
+          this.ctx.strokeStyle = "rgba(255, 153, 74, 0.48)";
+          this.ctx.lineWidth = 2;
+          this.ctx.stroke();
+        }
 
-      if (tokenSkin === "token_hazard") {
-        this.ctx.save();
-        this.ctx.translate(center.x, center.y);
-        this.ctx.rotate(Math.PI / 4);
-        this.ctx.strokeStyle = "rgba(255, 212, 87, 0.68)";
-        this.ctx.lineWidth = 2;
-        this.ctx.strokeRect(-tokenRadius - 2, -tokenRadius - 2, (tokenRadius + 2) * 2, (tokenRadius + 2) * 2);
-        this.ctx.restore();
-      }
+        if (tokenSkin === "token_signal_blue") {
+          this.ctx.beginPath();
+          this.ctx.arc(center.x, center.y, tokenRadius + 4, 0, Math.PI * 2);
+          this.ctx.strokeStyle = "rgba(99, 194, 255, 0.58)";
+          this.ctx.lineWidth = 2;
+          this.ctx.stroke();
+        }
 
-      drawAdvancedTokenMarkings(this.ctx, center, tokenRadius + 3, tokenSkin, detailLevel);
+        if (tokenSkin === "token_hazard") {
+          this.ctx.save();
+          this.ctx.translate(center.x, center.y);
+          this.ctx.rotate(Math.PI / 4);
+          this.ctx.strokeStyle = "rgba(255, 212, 87, 0.68)";
+          this.ctx.lineWidth = 2;
+          this.ctx.strokeRect(-tokenRadius - 2, -tokenRadius - 2, (tokenRadius + 2) * 2, (tokenRadius + 2) * 2);
+          this.ctx.restore();
+        }
+
+        drawAdvancedTokenMarkings(this.ctx, center, tokenRadius + 3, tokenSkin, detailLevel);
+      }
 
       if (attackable || hitFlash) {
         this.ctx.beginPath();
@@ -687,7 +721,7 @@ export class GameRenderer {
         this.ctx.stroke();
       }
 
-      if (this.state.gameMap.hexSize * this.camera.zoom > 22) {
+      if (!advancedToken && this.state.gameMap.hexSize * this.camera.zoom > 22) {
         this.ctx.fillStyle = "#ffffff";
         this.ctx.font = `${Math.max(9, Math.min(16, tokenRadius * 0.52))}px Inter, system-ui, sans-serif`;
         this.ctx.textAlign = "center";
@@ -1250,15 +1284,383 @@ function getPlayerTokenStroke({ active, tokenSkin }) {
 }
 
 const TOKEN_SKIN_STYLES = {
-  token_standard_issue: { fill: "#4f5a52", activeFill: "#27342f", stroke: "#dce5d8", activeStroke: "#ffffff", accent: "#dce5d8", mode: "standard" },
-  token_recon: { fill: "#2f5940", activeFill: "#183526", stroke: "#9dc6a6", activeStroke: "#d7ffe1", accent: "#9dc6a6", mode: "recon" },
-  token_thermal: { fill: "#7a4b2a", activeFill: "#3b2519", stroke: "#f0a35c", activeStroke: "#ffd0a0", accent: "#f0a35c", mode: "thermal" },
-  token_hazmat: { fill: "#77702c", activeFill: "#383612", stroke: "#d4c45b", activeStroke: "#fff1a5", accent: "#d4c45b", mode: "hazmat" },
-  token_jammer: { fill: "#2b6370", activeFill: "#17343b", stroke: "#78a9b7", activeStroke: "#c9f5ff", accent: "#78a9b7", mode: "jammer" },
-  token_black_cell: { fill: "#161a1d", activeFill: "#070909", stroke: "#7f8790", activeStroke: "#d1d6db", accent: "#7f8790", mode: "blackCell" },
-  token_contraband: { fill: "#73502c", activeFill: "#332112", stroke: "#b9854b", activeStroke: "#f1c47f", accent: "#b9854b", mode: "contraband" },
-  token_extraction_mark: { fill: "#426735", activeFill: "#1f321b", stroke: "#b8f36e", activeStroke: "#edffd2", accent: "#b8f36e", mode: "extract" }
+  token_standard_issue: { fill: "#4f5a52", activeFill: "#27342f", stroke: "#dce5d8", activeStroke: "#ffffff", accent: "#dce5d8", top: "#5b655d", mid: "#2e3732", low: "#121817", mode: "standard" },
+  token_recon: { fill: "#2f5940", activeFill: "#183526", stroke: "#9dc6a6", activeStroke: "#d7ffe1", accent: "#9dc6a6", top: "#405144", mid: "#203129", low: "#0d1412", mode: "recon" },
+  token_thermal: { fill: "#7a4b2a", activeFill: "#3b2519", stroke: "#f0a35c", activeStroke: "#ffd0a0", accent: "#f0a35c", top: "#5b4132", mid: "#281e1a", low: "#100d0c", mode: "thermal" },
+  token_hazmat: { fill: "#77702c", activeFill: "#383612", stroke: "#d4c45b", activeStroke: "#fff1a5", accent: "#d4c45b", top: "#565238", mid: "#2c2b1d", low: "#12120c", mode: "hazmat" },
+  token_jammer: { fill: "#2b6370", activeFill: "#17343b", stroke: "#78a9b7", activeStroke: "#c9f5ff", accent: "#78a9b7", top: "#334b52", mid: "#1b282c", low: "#0b1113", mode: "jammer" },
+  token_black_cell: { fill: "#161a1d", activeFill: "#070909", stroke: "#7f8790", activeStroke: "#d1d6db", accent: "#7f8790", top: "#282c31", mid: "#111417", low: "#040505", mode: "blackCell" },
+  token_contraband: { fill: "#73502c", activeFill: "#332112", stroke: "#b9854b", activeStroke: "#f1c47f", accent: "#b9854b", top: "#4f3929", mid: "#251a14", low: "#100b09", mode: "contraband" },
+  token_extraction_mark: { fill: "#426735", activeFill: "#1f321b", stroke: "#b8f36e", activeStroke: "#edffd2", accent: "#b8f36e", top: "#4c6840", mid: "#243522", low: "#0d130d", mode: "extract" }
 };
+
+function drawDemoScaleToken(ctx, center, radius, tokenSkin, label, { attackable = false, hitFlash = false, detailLevel = 1 } = {}) {
+  const style = TOKEN_SKIN_STYLES[tokenSkin];
+  if (!style) return;
+
+  const scale = radius / 34;
+  const accent = attackable ? "#ff8b7c" : hitFlash ? "#ffd0c9" : style.accent;
+
+  ctx.save();
+  ctx.translate(center.x, center.y);
+  ctx.scale(scale, scale);
+
+  ctx.beginPath();
+  ctx.arc(0, 0, 34, 0, Math.PI * 2);
+  ctx.fillStyle = "#050707";
+  ctx.fill();
+
+  const shell = ctx.createRadialGradient(-8, -12, 3, 0, 0, 34);
+  shell.addColorStop(0, hitFlash ? "#f18e84" : style.top);
+  shell.addColorStop(0.58, attackable ? "#6b2422" : style.mid);
+  shell.addColorStop(1, style.low);
+  ctx.beginPath();
+  ctx.arc(0, 0, 32, 0, Math.PI * 2);
+  ctx.fillStyle = shell;
+  ctx.fill();
+  ctx.strokeStyle = "rgba(255,255,255,0.18)";
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(0, 0, 31, 0, Math.PI * 2);
+  ctx.clip();
+  drawTokenTexture(ctx, style, detailLevel);
+  drawTokenBody(ctx, style, accent, detailLevel);
+  ctx.restore();
+
+  drawTokenRing(ctx, style, accent, detailLevel);
+
+  ctx.beginPath();
+  ctx.arc(0, 0, 13.5, 0, Math.PI * 2);
+  ctx.fillStyle = "rgba(5,8,8,0.74)";
+  ctx.fill();
+  ctx.strokeStyle = accent;
+  ctx.globalAlpha = 0.72;
+  ctx.lineWidth = 1.4;
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+
+  if (detailLevel > 0) {
+    ctx.fillStyle = "#f7f8ee";
+    ctx.font = "900 13px Arial, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(label, 0, 2.6);
+  }
+
+  ctx.restore();
+}
+
+function drawTokenTexture(ctx, style, detailLevel) {
+  if (detailLevel <= 0) return;
+
+  ctx.save();
+  ctx.globalAlpha = 0.22;
+  ctx.strokeStyle = style.accent;
+  ctx.fillStyle = style.accent;
+  ctx.lineWidth = 1;
+
+  if (style.mode === "recon") {
+    for (let x = -28; x <= 28; x += 8) {
+      for (let y = -28; y <= 28; y += 8) {
+        ctx.beginPath();
+        ctx.arc(x + 2, y + 2, 0.8, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  } else if (style.mode === "thermal" || style.mode === "jammer") {
+    for (let y = -28; y <= 28; y += 8) {
+      ctx.beginPath();
+      ctx.moveTo(-31, y);
+      ctx.lineTo(31, y);
+      ctx.stroke();
+    }
+  } else if (style.mode === "blackCell") {
+    for (let x = -32; x < 32; x += 8) {
+      for (let y = -32; y < 32; y += 8) {
+        if (((x + y) / 8) % 2 === 0) {
+          ctx.fillRect(x, y, 4, 4);
+        }
+      }
+    }
+  } else {
+    for (let offset = -48; offset <= 48; offset += 10) {
+      ctx.beginPath();
+      ctx.moveTo(offset, 31);
+      ctx.lineTo(offset + 36, -31);
+      ctx.stroke();
+    }
+  }
+
+  ctx.restore();
+}
+
+function drawTokenBody(ctx, style, accent, detailLevel) {
+  ctx.save();
+  ctx.strokeStyle = accent;
+  ctx.fillStyle = accent;
+  ctx.lineWidth = 1.6;
+
+  if (style.mode === "standard") {
+    const slash = ctx.createLinearGradient(-24, -24, 24, 24);
+    slash.addColorStop(0, accent);
+    slash.addColorStop(1, "rgba(255,255,255,0.08)");
+    ctx.globalAlpha = 0.34;
+    ctx.beginPath();
+    ctx.moveTo(-18, 12);
+    ctx.lineTo(18, -12);
+    ctx.lineTo(22, -6);
+    ctx.lineTo(-14, 18);
+    ctx.closePath();
+    ctx.fillStyle = slash;
+    ctx.fill();
+    ctx.globalAlpha = 0.52;
+    ctx.beginPath();
+    ctx.moveTo(-14, 14);
+    ctx.lineTo(14, 14);
+    ctx.stroke();
+  } else if (style.mode === "recon") {
+    ctx.globalAlpha = 0.44;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.arc(0, 0, 22, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 0.72;
+    ctx.beginPath();
+    ctx.arc(16, -14, 3, 0, Math.PI * 2);
+    ctx.fill();
+    drawCrosshair(ctx, accent);
+  } else if (style.mode === "thermal") {
+    ctx.globalAlpha = 0.16;
+    ctx.beginPath();
+    ctx.moveTo(-24, 14);
+    ctx.bezierCurveTo(-12, 6, -11, -6, 2, -9);
+    ctx.bezierCurveTo(13, -12, 19, -19, 26, -24);
+    ctx.lineTo(26, 22);
+    ctx.lineTo(-24, 22);
+    ctx.closePath();
+    ctx.fill();
+    ctx.globalAlpha = 0.5;
+    ctx.beginPath();
+    ctx.arc(12, -12, 5, 0, Math.PI * 2);
+    ctx.fill();
+    drawBodyLines(ctx, "rgba(255,255,255,0.12)", [-11, -4, 3, 10]);
+  } else if (style.mode === "hazmat") {
+    ctx.globalAlpha = 0.44;
+    ctx.beginPath();
+    ctx.moveTo(0, -23);
+    ctx.lineTo(21, 14);
+    ctx.lineTo(-21, 14);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.globalAlpha = 0.55;
+    ctx.beginPath();
+    ctx.arc(0, 2, 9, 0, Math.PI * 2);
+    ctx.stroke();
+    drawCross(ctx);
+  } else if (style.mode === "jammer") {
+    ctx.globalAlpha = 0.62;
+    drawBodyLines(ctx, accent, [-6, 2, 10]);
+    ctx.globalAlpha = 0.5;
+    ctx.fillRect(-18, -18, 10, 9);
+  } else if (style.mode === "blackCell") {
+    ctx.globalAlpha = 0.26;
+    ctx.beginPath();
+    ctx.moveTo(-20, -16);
+    ctx.lineTo(20, -20);
+    ctx.lineTo(16, 20);
+    ctx.lineTo(-16, 16);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.globalAlpha = 0.35;
+    ctx.strokeRect(-13, -10, 26, 20);
+    if (detailLevel >= 2) {
+      ctx.beginPath();
+      ctx.moveTo(-13, 10);
+      ctx.lineTo(13, -10);
+      ctx.stroke();
+    }
+  } else if (style.mode === "contraband") {
+    ctx.globalAlpha = 0.26;
+    ctx.beginPath();
+    ctx.moveTo(-23, 8);
+    ctx.lineTo(23, -14);
+    ctx.lineTo(25, -7);
+    ctx.lineTo(-21, 15);
+    ctx.closePath();
+    ctx.fill();
+    ctx.globalAlpha = 0.7;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(-11, 20);
+    ctx.lineTo(11, 20);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  } else if (style.mode === "extract") {
+    ctx.globalAlpha = 0.48;
+    ctx.beginPath();
+    ctx.moveTo(0, -23);
+    ctx.lineTo(19, -5);
+    ctx.lineTo(12, -5);
+    ctx.lineTo(12, 16);
+    ctx.lineTo(-12, 16);
+    ctx.lineTo(-12, -5);
+    ctx.lineTo(-19, -5);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.globalAlpha = 0.82;
+    ctx.beginPath();
+    ctx.arc(0, -11, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
+function drawTokenRing(ctx, style, accent, detailLevel) {
+  ctx.save();
+  ctx.strokeStyle = accent;
+  ctx.lineWidth = 2;
+
+  if (style.mode === "standard") {
+    ctx.globalAlpha = 0.42;
+    ctx.beginPath();
+    ctx.arc(0, 0, 27, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 0.48;
+    drawCompassTicks(ctx);
+  } else if (style.mode === "recon") {
+    ctx.globalAlpha = 0.44;
+    ctx.setLineDash([12, 5]);
+    ctx.beginPath();
+    ctx.arc(0, 0, 25, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  } else if (style.mode === "thermal") {
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(0, 0, 27, Math.PI, Math.PI * 1.5);
+    ctx.stroke();
+    ctx.strokeStyle = "#9c2f26";
+    ctx.beginPath();
+    ctx.arc(0, 0, 27, 0, Math.PI * 0.5);
+    ctx.stroke();
+  } else if (style.mode === "hazmat") {
+    ctx.lineWidth = 4;
+    ctx.globalAlpha = 0.72;
+    ctx.setLineDash([9, 6]);
+    ctx.beginPath();
+    ctx.arc(0, 0, 28, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  } else if (style.mode === "jammer") {
+    ctx.globalAlpha = 0.7;
+    ctx.setLineDash([3, 5]);
+    ctx.beginPath();
+    ctx.arc(0, -2, 28, Math.PI * 1.12, Math.PI * 1.88);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.strokeStyle = "rgba(255,255,255,0.2)";
+    ctx.beginPath();
+    ctx.arc(0, 0, 30, Math.PI * 0.12, Math.PI * 0.88);
+    ctx.stroke();
+  } else if (style.mode === "blackCell") {
+    ctx.globalAlpha = 0.22;
+    ctx.beginPath();
+    ctx.arc(0, 0, 28, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 0.62;
+    ctx.beginPath();
+    ctx.arc(0, 0, 29, Math.PI * 1.12, Math.PI * 1.88);
+    ctx.stroke();
+  } else if (style.mode === "contraband") {
+    ctx.lineWidth = 3;
+    ctx.globalAlpha = 0.48;
+    ctx.setLineDash([18, 8]);
+    ctx.beginPath();
+    ctx.arc(0, 0, 27, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  } else if (style.mode === "extract") {
+    ctx.globalAlpha = 0.9;
+    ctx.setLineDash([6, 4]);
+    ctx.beginPath();
+    ctx.arc(0, 0, 29, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    if (detailLevel >= 1) {
+      ctx.fillStyle = accent;
+      ctx.globalAlpha = 0.68;
+      ctx.beginPath();
+      ctx.moveTo(0, -31);
+      ctx.lineTo(5, -24);
+      ctx.lineTo(-5, -24);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(0, 31);
+      ctx.lineTo(-5, 24);
+      ctx.lineTo(5, 24);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
+  ctx.restore();
+}
+
+function drawCrosshair(ctx, color) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  ctx.moveTo(-16, 0);
+  ctx.lineTo(-7, 0);
+  ctx.moveTo(7, 0);
+  ctx.lineTo(16, 0);
+  ctx.moveTo(0, -16);
+  ctx.lineTo(0, -7);
+  ctx.moveTo(0, 7);
+  ctx.lineTo(0, 16);
+  ctx.stroke();
+}
+
+function drawBodyLines(ctx, color, rows) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.6;
+  rows.forEach((y, index) => {
+    ctx.beginPath();
+    ctx.moveTo(-20 + index * 2, y);
+    ctx.lineTo(20 - index * 2, y - 3);
+    ctx.stroke();
+  });
+}
+
+function drawCross(ctx) {
+  ctx.beginPath();
+  ctx.moveTo(0, -7);
+  ctx.lineTo(0, 11);
+  ctx.moveTo(-9, 7);
+  ctx.lineTo(9, -3);
+  ctx.moveTo(-9, -3);
+  ctx.lineTo(9, 7);
+  ctx.stroke();
+}
+
+function drawCompassTicks(ctx) {
+  ctx.beginPath();
+  ctx.moveTo(0, -29);
+  ctx.lineTo(0, -22);
+  ctx.moveTo(0, 22);
+  ctx.lineTo(0, 29);
+  ctx.moveTo(-29, 0);
+  ctx.lineTo(-22, 0);
+  ctx.moveTo(22, 0);
+  ctx.lineTo(29, 0);
+  ctx.stroke();
+}
 
 function drawAdvancedTokenMarkings(ctx, center, radius, tokenSkin, detailLevel = 1) {
   const style = TOKEN_SKIN_STYLES[tokenSkin];

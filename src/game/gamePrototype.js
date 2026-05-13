@@ -1716,6 +1716,7 @@ async function handleStartGame({ remoteStart = false } = {}) {
       startOverlay.hidden = true;
     }
     gameStarted = true;
+    focusCameraOnLocalPlayer();
     startGlobalVoiceTracking({ playRaidStart: true });
 
     if (remoteStart) {
@@ -4648,6 +4649,9 @@ function handleRemoteGameSnapshot(payload) {
   state.importSnapshot(payload.snapshot);
   updateUi({ skipSnapshotBroadcast: true });
   animateRemotePositionChanges(previousPositions, payload.meta);
+  if (payload.reason === "gameStart") {
+    focusCameraOnLocalPlayer();
+  }
   renderer.render();
   restoreLocalPendingTileActionFromSnapshot(payload.reason);
   applyingRemoteSnapshot = false;
@@ -5508,12 +5512,23 @@ function ensureMobileViewResetUi() {
 }
 
 function resetMobileGameView() {
-  renderer?.centerCamera();
+  renderer?.fitMapToView();
   renderer?.requestRender();
   clearPendingTileAction();
   if (actionLog) {
-    actionLog.textContent = "맵 화면을 기본 위치로 되돌렸습니다.";
+    actionLog.textContent = "맵 전체가 보이도록 화면을 조정했습니다.";
   }
+}
+
+function focusCameraOnLocalPlayer() {
+  const player = getUiPlayer();
+
+  if (!renderer || !player?.position) {
+    return;
+  }
+
+  renderer.centerOnPlayer(player);
+  renderer.requestRender();
 }
 
 function ensureFloatingEndTurnUi() {
