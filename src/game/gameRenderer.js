@@ -401,11 +401,11 @@ export class GameRenderer {
         this.ctx.fill();
       }
 
-      const selectedVisible = key === selectedKey && visible && playerTurn;
       const playerVisible = visiblePlayerKeys.has(key);
+      const selectedVisible = key === selectedKey && visible && playerTurn && !playerVisible;
 
-      this.ctx.strokeStyle = selectedVisible ? "#123f43" : playerVisible ? "#ffffff" : terrain.stroke;
-      this.ctx.lineWidth = selectedVisible || playerVisible ? 3 : Math.max(0.6, this.camera.zoom);
+      this.ctx.strokeStyle = selectedVisible ? "#123f43" : terrain.stroke;
+      this.ctx.lineWidth = selectedVisible ? 3 : Math.max(0.6, this.camera.zoom);
       this.ctx.stroke();
 
       if (isPlayerExtraction) {

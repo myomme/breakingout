@@ -72,6 +72,11 @@ const server = http.createServer(async (request, response) => {
       return;
     }
 
+    if (url.pathname === "/admin/accounts/delete") {
+      await handleAdminAccountDeleteRequest(request, response, url);
+      return;
+    }
+
     if (url.pathname === "/api/leaderboard") {
       handleLeaderboardRequest(response);
       return;
@@ -222,30 +227,264 @@ function readClientJson(client, data) {
 }
 
 function handleAdminAccountsRequest(request, response, url) {
+  if (!isAdminAuthorized(request, url)) {
+    sendAdminDenied(response, wantsJson(url));
+    return;
+  }
+
+  const rows = getAdminAccountRows();
+  const ghostRows = rows.filter((row) => row.flags.includes("ghost"));
+
+  if (!wantsJson(url)) {
+    response.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
+    response.end(renderAdminAccountsPage({
+      key: url.searchParams.get("key") ?? "",
+      rows,
+      ghostRows
+    }));
+    return;
+  }
+
+  response.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+  response.end(JSON.stringify({
+    ok: true,
+    count: rows.length,
+    ghostCount: ghostRows.length,
+    sessionTtlDays: Math.round(ACCOUNT_SESSION_TTL_MS / (24 * 60 * 60 * 1000)),
+    accounts: rows
+  }, null, 2));
+}
+
+async function handleAdminAccountDeleteRequest(request, response, url) {
+  if (!isAdminAuthorized(request, url)) {
+    sendAdminDenied(response, true);
+    return;
+  }
+
+  if (request.method !== "POST") {
+    response.writeHead(405, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+    response.end(JSON.stringify({ ok: false, message: "Method Not Allowed" }));
+    return;
+  }
+
+  const body = await readRequestBody(request);
+  const params = new URLSearchParams(body);
+  const accountId = String(params.get("accountId") ?? "").trim();
+  const redirect = params.get("redirect") === "1";
+
+  if (!accountId || !accounts.has(accountId)) {
+    response.writeHead(404, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+    response.end(JSON.stringify({ ok: false, message: "Account not found" }));
+    return;
+  }
+
+  accounts.delete(accountId);
+  removeAccountFromRooms(accountId);
+  await saveAccounts();
+
+  if (redirect) {
+    response.writeHead(303, { Location: `/admin/accounts?key=${encodeURIComponent(url.searchParams.get("key") ?? "")}` });
+    response.end();
+    return;
+  }
+
+  response.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+  response.end(JSON.stringify({ ok: true, deleted: accountId }));
+}
+
+function isAdminAuthorized(request, url) {
+  if (!ADMIN_KEY) return false;
+  const providedKey = request.headers["x-admin-key"] ?? url.searchParams.get("key");
+  return providedKey === ADMIN_KEY;
+}
+
+function sendAdminDenied(response, json = true) {
   if (!ADMIN_KEY) {
     response.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
     response.end("Not found");
     return;
   }
 
-  const providedKey = request.headers["x-admin-key"] ?? url.searchParams.get("key");
-  if (providedKey !== ADMIN_KEY) {
-    response.writeHead(403, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
-    response.end(JSON.stringify({ ok: false, message: "Forbidden" }));
-    return;
-  }
+  response.writeHead(403, { "Content-Type": json ? "application/json; charset=utf-8" : "text/plain; charset=utf-8", "Cache-Control": "no-store" });
+  response.end(json ? JSON.stringify({ ok: false, message: "Forbidden" }) : "Forbidden");
+}
 
-  const rows = [...accounts.values()]
-    .map((account) => sanitizeAccountForAdmin(normalizeAccount(account, account.accountId, account.nickname)))
+function wantsJson(url) {
+  return url.searchParams.get("format") === "json";
+}
+
+function getAdminAccountRows() {
+  return [...accounts.values()]
+    .map((account) => {
+      const normalized = normalizeAccount(account, account.accountId, account.nickname);
+      const row = sanitizeAccountForAdmin(normalized);
+      row.flags = getAccountAdminFlags(normalized);
+      return row;
+    })
     .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
+}
 
-  response.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
-  response.end(JSON.stringify({
-    ok: true,
-    count: rows.length,
-    sessionTtlDays: Math.round(ACCOUNT_SESSION_TTL_MS / (24 * 60 * 60 * 1000)),
-    accounts: rows
-  }, null, 2));
+function getAccountAdminFlags(account) {
+  const flags = [];
+  const stats = account.stats ?? {};
+  const wallet = account.wallet ?? {};
+  const sessions = Array.isArray(account.sessions) ? account.sessions : [];
+  const noProgress = Number(stats.gamesPlayed ?? 0) === 0 &&
+    Number(stats.gamesCompleted ?? 0) === 0 &&
+    Number(wallet.lifetimeLootValue ?? 0) === 0 &&
+    Number(wallet.spentValue ?? 0) === 0;
+  const stale = Date.now() - Number(account.updatedAt ?? account.createdAt ?? 0) > ACCOUNT_SESSION_TTL_MS;
+  const incomplete = !account.username && !account.passwordHash;
+
+  if (noProgress && (sessions.length === 0 || stale || incomplete)) flags.push("ghost");
+  if (stale) flags.push("stale");
+  if (incomplete) flags.push("local-only");
+  if (sessions.length > 0) flags.push("active-session");
+  return flags;
+}
+
+function renderAdminAccountsPage({ key, rows, ghostRows }) {
+  const totals = {
+    accounts: rows.length,
+    ghosts: ghostRows.length,
+    completed: rows.reduce((sum, row) => sum + Number(row.stats?.gamesCompleted ?? 0), 0),
+    value: rows.reduce((sum, row) => sum + Number(row.wallet?.lifetimeLootValue ?? 0), 0)
+  };
+
+  return `<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Breaking Out Admin</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, "Segoe UI", sans-serif; background: #080b0b; color: #f4f1e8; }
+    body { margin: 0; background: #080b0b; }
+    main { width: min(1180px, calc(100vw - 32px)); margin: 0 auto; padding: 28px 0 44px; }
+    header { display: flex; justify-content: space-between; gap: 16px; align-items: end; border-bottom: 1px solid rgba(236,224,196,.16); padding-bottom: 18px; }
+    h1 { margin: 0; font-size: 30px; }
+    p { margin: 6px 0 0; color: rgba(244,241,232,.64); }
+    .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 18px 0; }
+    .stat, .panel { border: 1px solid rgba(236,224,196,.14); border-radius: 8px; background: rgba(255,255,255,.045); padding: 14px; }
+    .stat span, th { color: rgba(244,241,232,.58); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
+    .stat strong { display: block; margin-top: 6px; font-size: 24px; }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+    input, select, button { min-height: 34px; border: 1px solid rgba(236,224,196,.18); border-radius: 6px; background: rgba(255,255,255,.07); color: #f4f1e8; padding: 0 10px; font: inherit; }
+    button.danger { border-color: rgba(255,98,82,.44); background: rgba(255,98,82,.12); color: #ffd8d0; cursor: pointer; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border-bottom: 1px solid rgba(236,224,196,.1); padding: 10px 8px; text-align: left; vertical-align: top; }
+    td small { display: block; color: rgba(244,241,232,.58); margin-top: 3px; }
+    .flags { display: flex; flex-wrap: wrap; gap: 4px; }
+    .flag { border: 1px solid rgba(185,232,109,.24); border-radius: 999px; padding: 2px 7px; color: #dff4b5; font-size: 11px; }
+    .flag.ghost { border-color: rgba(255,98,82,.42); color: #ffd8d0; }
+    @media (max-width: 760px) { .stats { grid-template-columns: repeat(2, 1fr); } table { font-size: 12px; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>운영자 계정 관리</h1>
+        <p>유령 계정은 전적/가치가 없고 세션이 없거나 오래된 계정입니다.</p>
+      </div>
+      <a style="color:#dff4b5" href="/admin/accounts?format=json&key=${escapeHtml(key)}">JSON</a>
+    </header>
+    <section class="stats">
+      <article class="stat"><span>Accounts</span><strong>${totals.accounts}</strong></article>
+      <article class="stat"><span>Ghosts</span><strong>${totals.ghosts}</strong></article>
+      <article class="stat"><span>Completed</span><strong>${totals.completed}</strong></article>
+      <article class="stat"><span>Lifetime Value</span><strong>${totals.value}</strong></article>
+    </section>
+    <section class="panel">
+      <div class="toolbar">
+        <input id="search" type="search" placeholder="계정, 닉네임 검색">
+        <select id="filter"><option value="all">전체</option><option value="ghost">유령 계정</option><option value="stale">오래된 계정</option></select>
+      </div>
+      <table>
+        <thead><tr><th>계정</th><th>전적</th><th>재화</th><th>상태</th><th>관리</th></tr></thead>
+        <tbody>
+          ${rows.map((row) => renderAdminAccountRow(row, key)).join("")}
+        </tbody>
+      </table>
+    </section>
+  </main>
+  <script>
+    const search = document.querySelector("#search");
+    const filter = document.querySelector("#filter");
+    function applyFilters() {
+      const q = search.value.toLowerCase();
+      const f = filter.value;
+      document.querySelectorAll("tbody tr").forEach((row) => {
+        const hay = row.dataset.search;
+        const flags = row.dataset.flags;
+        row.hidden = (q && !hay.includes(q)) || (f !== "all" && !flags.includes(f));
+      });
+    }
+    search.addEventListener("input", applyFilters);
+    filter.addEventListener("change", applyFilters);
+    document.querySelectorAll("form[data-delete]").forEach((form) => {
+      form.addEventListener("submit", (event) => {
+        const name = form.dataset.delete;
+        if (!confirm(name + " 계정을 삭제할까요? 이 작업은 되돌릴 수 없습니다.")) event.preventDefault();
+      });
+    });
+  </script>
+</body>
+</html>`;
+}
+
+function renderAdminAccountRow(row, key) {
+  const flags = row.flags ?? [];
+  const search = `${row.accountId} ${row.username ?? ""} ${row.nickname ?? ""}`.toLowerCase();
+  return `<tr data-search="${escapeHtml(search)}" data-flags="${escapeHtml(flags.join(" "))}">
+    <td><strong>${escapeHtml(row.nickname)}</strong><small>${escapeHtml(row.accountId)}</small><small>${escapeHtml(row.username ?? "-")}</small></td>
+    <td>${Number(row.stats?.gamesCompleted ?? 0)} 완료 / ${Number(row.stats?.wins ?? 0)} 승<small>K ${Number(row.stats?.kills ?? 0)} / D ${Number(row.stats?.deaths ?? 0)}</small></td>
+    <td>${Number(row.wallet?.spendableValue ?? 0)} 보유<small>누적 ${Number(row.wallet?.lifetimeLootValue ?? 0)}</small></td>
+    <td><div class="flags">${flags.map((flag) => `<span class="flag ${flag}">${flag}</span>`).join("") || "<span class=\"flag\">normal</span>"}</div><small>${new Date(row.updatedAt ?? 0).toLocaleString("ko-KR")}</small></td>
+    <td><form method="post" action="/admin/accounts/delete?key=${encodeURIComponent(key)}" data-delete="${escapeHtml(row.nickname)}"><input type="hidden" name="accountId" value="${escapeHtml(row.accountId)}"><input type="hidden" name="redirect" value="1"><button class="danger" type="submit">삭제</button></form></td>
+  </tr>`;
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function readRequestBody(request) {
+  return new Promise((resolve, reject) => {
+    let body = "";
+    request.setEncoding("utf8");
+    request.on("data", (chunk) => {
+      body += chunk;
+      if (body.length > 1_000_000) {
+        reject(new Error("Request body too large"));
+        request.destroy();
+      }
+    });
+    request.on("end", () => resolve(body));
+    request.on("error", reject);
+  });
+}
+
+function removeAccountFromRooms(accountId) {
+  rooms.forEach((room) => {
+    room.slots = normalizeServerSlots(room.slots).map((slot) => (
+      slot.type === "player" && slot.playerId === accountId
+        ? { type: "open", weaponId: slot.weaponId ?? "AR", armorId: slot.armorId ?? "lightSet" }
+        : slot
+    ));
+    if (room.hostId === accountId) {
+      const nextHost = room.slots.find((slot) => slot.type === "player" && slot.playerId);
+      room.hostId = nextHost?.playerId ?? null;
+    }
+    syncServerPlayersFromSlots(room);
+  });
+  rooms = rooms.filter((room) => room.hostId && room.players.length > 0);
+  broadcastRooms("adminDeleteAccount");
 }
 
 function handleLeaderboardRequest(response) {
