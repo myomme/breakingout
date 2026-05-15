@@ -160,6 +160,9 @@ server.on("upgrade", (request, socket) => {
     socket,
     id: crypto.randomUUID(),
     playerId: null,
+    nickname: "",
+    connectedAt: Date.now(),
+    lastSeen: Date.now(),
     buffer: Buffer.alloc(0),
     fragments: [],
     alive: true
@@ -174,10 +177,12 @@ server.on("upgrade", (request, socket) => {
   socket.on("close", () => {
     markClientDisconnected(client);
     clients.delete(client);
+    broadcastPresence();
   });
   socket.on("error", () => {
     markClientDisconnected(client);
     clients.delete(client);
+    broadcastPresence();
   });
 });
 
@@ -953,15 +958,69 @@ function sanitizeAccountForAdmin(account) {
   };
 }
 
+function sanitizePresenceNickname(value) {
+  return String(value ?? "").trim().replace(/\s+/g, " ").slice(0, 24);
+}
+
+function getPresenceNickname(client) {
+  if (client.nickname) {
+    return client.nickname;
+  }
+  const account = client.playerId ? accounts.get(client.playerId) : null;
+  return sanitizePresenceNickname(account?.nickname || account?.username || `Player ${String(client.playerId ?? client.id).slice(-4)}`);
+}
+
+function getOnlinePresence() {
+  const unique = new Map();
+  clients.forEach((client) => {
+    if (!client.playerId || deletedAccountIds.has(client.playerId)) {
+      return;
+    }
+    if (!client.nickname && !accounts.has(client.playerId)) {
+      return;
+    }
+    const existing = unique.get(client.playerId);
+    const lastSeen = Number(client.lastSeen ?? 0);
+    if (existing && existing.lastSeen >= lastSeen) {
+      return;
+    }
+    unique.set(client.playerId, {
+      playerId: client.playerId,
+      nickname: getPresenceNickname(client),
+      connectedAt: Number(client.connectedAt ?? Date.now()),
+      lastSeen
+    });
+  });
+  return Array.from(unique.values()).sort((a, b) => a.nickname.localeCompare(b.nickname, "ko-KR"));
+}
+
+function broadcastPresence() {
+  broadcast({ type: "presence", sourceId: "server", online: getOnlinePresence(), at: Date.now() });
+}
+
 function handleMessage(client, message) {
   if (!message?.type) return;
+  const previousPlayerId = client.playerId;
+  const previousNickname = client.nickname;
   if (message.sourceId) {
     client.playerId = message.sourceId;
+  }
+  if (message.nickname) {
+    client.nickname = sanitizePresenceNickname(message.nickname);
+  }
+  client.lastSeen = Date.now();
+  if (client.playerId !== previousPlayerId || client.nickname !== previousNickname) {
+    broadcastPresence();
   }
 
   if (message.type === "getRooms") {
     pruneRooms();
     sendJson(client, { type: "roomsChanged", reason: "serverSync", sourceId: "server", rooms, at: Date.now() });
+    return;
+  }
+
+  if (message.type === "getPresence") {
+    sendJson(client, { type: "presence", sourceId: "server", online: getOnlinePresence(), at: Date.now() });
     return;
   }
 
@@ -1517,17 +1576,6 @@ function handleAccountAction(client, message) {
 
   if (!playerId) {
     sendJson(client, { type: "accountRejected", sourceId: "server", message: "Missing player id", at: Date.now() });
-    return;
-  }
-
-  if (action === "debugGrantValue") {
-    const amount = Math.max(1, Math.min(10000, Math.floor(Number(message.amount ?? 500))));
-    account.wallet.lifetimeLootValue += amount;
-    account.wallet.spendableValue += amount;
-    account.updatedAt = Date.now();
-    accounts.set(playerId, account);
-    scheduleAccountSave();
-    sendJson(client, { type: "accountUpdated", sourceId: "server", account: sanitizeAccountForClient(account), at: Date.now() });
     return;
   }
 

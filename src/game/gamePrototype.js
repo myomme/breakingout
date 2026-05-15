@@ -112,6 +112,8 @@ const comLoadoutSettings = document.querySelector("#comLoadoutSettings");
 let lobbyChatMessages = document.querySelector("#lobbyChatMessages");
 let lobbyChatForm = document.querySelector("#lobbyChatForm");
 let lobbyChatInput = document.querySelector("#lobbyChatInput");
+let lobbyPresenceToggle = document.querySelector("#lobbyPresenceToggle");
+let lobbyPresenceList = document.querySelector("#lobbyPresenceList");
 let gameChatPanel = document.querySelector("#gameChatPanel");
 let gameChatToggle = document.querySelector("#gameChatToggle");
 let gameChatBadge = document.querySelector("#gameChatBadge");
@@ -122,6 +124,7 @@ let mobileViewResetButton = null;
 let floatingEndTurnButton = null;
 let floatingLeaveGameButton = null;
 let chatDisabled = false;
+let onlinePresence = [];
 
 let state;
 let renderer;
@@ -824,6 +827,29 @@ const SOUND_URL_TO_KEY = Object.fromEntries(
   Object.entries(SOUND_URLS).map(([key, value]) => [value, key])
 );
 
+const GAMEPLAY_SOUND_KEYS = new Set([
+  "diceRoll1",
+  "diceRoll2",
+  "pieceTap",
+  "hit",
+  "AR",
+  "DMR",
+  "SR",
+  "SMG",
+  "ticktock",
+  "switchOff",
+  "commonLoot",
+  "goldLoot",
+  "moveBlocked",
+  "voRaidStart",
+  "voRaidMid",
+  "voRaidEnd",
+  "voGameEnd",
+  "gameStart",
+  "cardDraw",
+  "cardFlick"
+]);
+
 const AI_TURN_TIMING = {
   turnStart: [220, 520],
   thinkBeforeAction: [260, 620],
@@ -1228,7 +1254,7 @@ function ensureLobbyShellUi() {
   bottomMenu.className = "lobby-bottom-menu";
   bottomMenu.setAttribute("aria-label", "보조 메뉴");
   bottomMenu.innerHTML = `
-    <button type="button" data-lobby-info="guide">가이드</button>
+    <button type="button" data-lobby-info="guide">매뉴얼</button>
     <button type="button" data-lobby-info="ranking">순위</button>
     <button type="button" data-lobby-info="codex">도감</button>
     <button type="button" data-lobby-info="missions">임무</button>
@@ -1549,7 +1575,7 @@ function showSupportReportMessage(message, isError = false) {
 
 function getLobbyInfoTitle(type) {
   const labels = {
-    guide: "가이드",
+    guide: "매뉴얼",
     ranking: "순위",
     codex: "도감",
     missions: "임무"
@@ -1635,7 +1661,7 @@ async function getLobbyInfoPanel(type) {
   }
 
   return {
-    title: "가이드",
+    title: "매뉴얼",
     markup: renderGuideBook(kills, deaths, extracts)
   };
 }
@@ -1798,7 +1824,16 @@ function bindLobbyInfoPanelActions(type) {
 
 const GUIDE_BOOK_PAGES = [
   {
-    title: "1. 게임 목표",
+    title: "1. 빠른 시작",
+    body: "방에 들어오면 장비를 고르고 READY를 누릅니다. 게임이 시작되면 내 말 기준으로 카메라가 잡히며, 내 턴에 이동, 루팅, 공격, 탈출을 선택합니다.",
+    points: [
+      "처음 하는 플레이어는 이동 가능한 타일 표시와 하단 행동 버튼만 따라가도 됩니다.",
+      "루팅 상자나 시체 가방은 가까이 가서 클릭하면 상호작용할 수 있습니다.",
+      "채팅, 신고, 재접속은 게임 중에도 유지됩니다."
+    ]
+  },
+  {
+    title: "2. 승리 목표",
     body: "Breaking Out은 3번의 레이드 동안 파밍, 전투, 생존, 탈출을 반복해 최종 가치를 겨루는 턴제 익스트랙션 보드게임입니다.",
     points: [
       "각 레이드는 15페이즈로 진행됩니다.",
@@ -1807,8 +1842,8 @@ const GUIDE_BOOK_PAGES = [
     ]
   },
   {
-    title: "2. 로비와 방",
-    body: "방장은 맵과 COM 슬롯을 관리하고, 플레이어는 자기 슬롯의 무장만 설정합니다.",
+    title: "3. 로비와 방",
+    body: "방장은 맵과 슬롯을 관리하고, 플레이어는 자기 슬롯의 무장과 준비 상태를 설정합니다.",
     points: [
       "방장은 Open, Closed, COM 슬롯을 조절할 수 있습니다.",
       "비방장 플레이어는 READY를 눌러 준비 상태를 표시합니다.",
@@ -1816,16 +1851,25 @@ const GUIDE_BOOK_PAGES = [
     ]
   },
   {
-    title: "3. 턴과 행동",
+    title: "4. 턴과 행동",
     body: "자기 차례에는 이동, 루팅, 공격 중 가능한 행동을 선택합니다. 스태미나는 행동 자원입니다.",
     points: [
       "걷기는 스태미나 1을 사용해 1칸 이동합니다.",
       "대시는 스태미나 2를 사용해 최대 3칸 이동합니다.",
-      "공격하면 일반적으로 그 턴은 종료됩니다."
+      "공격, 탈출, 페이즈 진행 같은 중요한 판정은 서버 확정 후 적용됩니다."
     ]
   },
   {
-    title: "4. 전투",
+    title: "5. 이동과 화면",
+    body: "이동 가능한 타일을 클릭하면 내 화면에서는 즉시 이동 예측 애니메이션이 보이고, 서버가 검증한 뒤 확정됩니다.",
+    points: [
+      "서버가 거절하면 원래 위치로 돌아가고 이동 불가 알림이 나옵니다.",
+      "모바일은 한 손가락 드래그로 카메라 이동, 두 손가락 핀치로 확대와 축소를 합니다.",
+      "화면 버튼은 맵 전체를 넓게 확인할 때 사용합니다."
+    ]
+  },
+  {
+    title: "6. 전투",
     body: "사거리, 시야, 엄폐, 무기 주사위 결과가 공격 성공과 피해 부위를 결정합니다.",
     points: [
       "머리나 상체 HP가 0이 되면 사망합니다.",
@@ -1834,16 +1878,16 @@ const GUIDE_BOOK_PAGES = [
     ]
   },
   {
-    title: "5. 루팅과 가방",
+    title: "7. 루팅과 가방",
     body: "루팅 타일이나 시체 가방에서 아이템을 얻고, 가방 20칸에 보관합니다.",
     points: [
       "일반 루팅은 전 등급 아이템이 낮은 확률로 섞여 나옵니다.",
       "고급 루팅은 에픽 이상 아이템 중심으로 등장합니다.",
-      "가방이 가득 차면 기존 아이템을 버리고 새 아이템을 넣어야 합니다."
+      "보험 처리된 아이템은 가방에서 별도 표시가 유지됩니다."
     ]
   },
   {
-    title: "6. 이벤트 카드",
+    title: "8. 이벤트 카드",
     body: "이벤트 카드는 레이드 흐름을 흔드는 변수입니다. 즉시 효과, 페이즈 효과, 레이드 보존 효과가 섞여 있습니다.",
     points: [
       "일부 이벤트는 피해나 루팅, 스태미나 제한을 즉시 발생시킵니다.",
@@ -1852,12 +1896,21 @@ const GUIDE_BOOK_PAGES = [
     ]
   },
   {
-    title: "7. 계정 성장",
+    title: "9. 계정과 외형",
     body: "게임 결과는 계정에 누적됩니다. 밸런스에 영향을 주는 유료성 아이템은 만들지 않는 방향입니다.",
     points: [
       "킬과 탈출은 경험치와 RP를 올립니다.",
       "사망하면 RP가 소폭 감소합니다.",
       "루팅 가치는 프로필 카드, 말 스킨, 링, 채팅 말풍선, 칭호 같은 외형 보상 구매에 사용합니다."
+    ]
+  },
+  {
+    title: "10. 베타 플레이 안내",
+    body: "베타 테스트에서는 버그 제보와 재접속 확인이 중요합니다. 이상 상황이 생기면 신고 버튼으로 현재 상황을 남겨 주세요.",
+    points: [
+      "비정상 종료 후 같은 계정으로 다시 접속하면 진행 중인 방 복귀 안내가 떠야 합니다.",
+      "운영자 공지는 로비, 방, 인게임 어디서든 최상단 팝업으로 표시됩니다.",
+      "방장이 나가도 서버가 남은 슬롯과 COM 전환을 관리합니다."
     ]
   }
 ];
@@ -1875,7 +1928,7 @@ function renderGuideBook(kills, deaths, extracts) {
         `).join("")}
       </div>
       <article class="guide-book-page">
-        <span>Guide ${activeGuidePage + 1} / ${GUIDE_BOOK_PAGES.length}</span>
+        <span>Manual ${activeGuidePage + 1} / ${GUIDE_BOOK_PAGES.length}</span>
         <strong>${escapeHtml(page.title)}</strong>
         <p>${escapeHtml(page.body)}</p>
         <ul>
@@ -2626,6 +2679,7 @@ function completeAccountLogin({ account, sessionToken }) {
   showLobbyStep("lobby");
   renderLobby();
   requestServerRooms();
+  requestServerPresence();
   requestChatHistory(LOBBY_CHAT_ROOM_ID);
   setStartStatus(`${lobbySession.nickname} 계정으로 접속했습니다.`);
 }
@@ -3033,8 +3087,8 @@ function renderLobbyEventPanel(account = readAccountRecord()) {
       <i><b style="width: ${killProgress}%"></b></i>
     </button>
     <button type="button" data-lobby-info="guide">
-      <span>공지</span>
-      <small>멀티 서버 테스트와 계정 저장 구조를 확장 중입니다.</small>
+      <span>매뉴얼</span>
+      <small>처음 접속한 플레이어는 여기서 기본 규칙을 확인하세요.</small>
     </button>
   `;
 }
@@ -3118,7 +3172,6 @@ function renderLobbyAccountCard(card, account = readAccountRecord()) {
       <span>누적 가치 <b>${formatValue(lifetimeValue)}</b></span>
     </div>
     <div class="lobby-account-actions">
-      <button class="account-debug-grant" type="button">+500</button>
       <button class="logout-account-button logout-account-icon" type="button">로그아웃</button>
     </div>
   `;
@@ -3243,7 +3296,6 @@ function renderAccountProfileCard(account = readAccountRecord()) {
       </dl>
       <div class="account-profile-actions">
         <button class="account-shop-open" type="button">상점 열기</button>
-        <button class="account-debug-grant" type="button">디버그 +500</button>
       </div>
       <p class="account-profile-last">최근 게임: ${escapeHtml(lastGameText)}</p>
     `;
@@ -3280,14 +3332,6 @@ function bindAccountProfileActions() {
       return;
     }
     button.addEventListener("click", () => openLobbyShop("shop"));
-    button.dataset.bound = "true";
-  });
-
-  document.querySelectorAll(".account-debug-grant").forEach((button) => {
-    if (button.dataset.bound === "true") {
-      return;
-    }
-    button.addEventListener("click", () => sendDebugGrantValue(500));
     button.dataset.bound = "true";
   });
 }
@@ -4339,6 +4383,7 @@ function initServerSync() {
       serverReconnectTimer = 0;
     }
     requestServerRooms();
+    requestServerPresence();
     requestAccountResume();
     requestChatHistory(LOBBY_CHAT_ROOM_ID);
     if (lobbySession.currentRoom?.id) {
@@ -4456,6 +4501,11 @@ function handleServerMessage(message) {
     return;
   }
 
+  if (message.type === "presence") {
+    handlePresenceUpdate(message);
+    return;
+  }
+
   if (message.type === "gameSnapshot") {
     handleRemoteGameSnapshot(message);
     return;
@@ -4532,6 +4582,19 @@ function requestServerRooms() {
     return false;
   }
   return true;
+}
+
+function requestServerPresence() {
+  if (!lobbySession.localPlayerId) {
+    return false;
+  }
+
+  return sendServerMessage({
+    type: "getPresence",
+    sourceId: lobbySession.localPlayerId,
+    nickname: lobbySession.nickname,
+    at: Date.now()
+  });
 }
 
 function requestServerAccount() {
@@ -6344,6 +6407,10 @@ function ensureSessionChatUi() {
           <button type="button" data-chat-action="disable" data-chat-target="lobby" aria-label="채팅 비활성화">off</button>
         </div>
       </header>
+      <button id="lobbyPresenceToggle" class="session-chat-presence" type="button" aria-expanded="false">
+        현재 접속 인원 수: 0명
+      </button>
+      <ul id="lobbyPresenceList" class="session-chat-presence-list" hidden></ul>
       <ul id="lobbyChatMessages" class="session-chat-messages"></ul>
       <form id="lobbyChatForm" class="session-chat-form">
         <input id="lobbyChatInput" type="text" maxlength="200" placeholder="로비에 메시지 보내기" autocomplete="off">
@@ -6396,6 +6463,8 @@ function ensureSessionChatUi() {
   lobbyChatMessages = document.querySelector("#lobbyChatMessages");
   lobbyChatForm = document.querySelector("#lobbyChatForm");
   lobbyChatInput = document.querySelector("#lobbyChatInput");
+  lobbyPresenceToggle = document.querySelector("#lobbyPresenceToggle");
+  lobbyPresenceList = document.querySelector("#lobbyPresenceList");
   gameChatPanel = document.querySelector("#gameChatPanel");
   gameChatToggle = document.querySelector("#gameChatToggle");
   gameChatBadge = document.querySelector("#gameChatBadge");
@@ -6413,6 +6482,19 @@ function bindSessionChatEvents() {
       sendChatFromInput(lobbyChatInput);
     });
     lobbyChatInput?.addEventListener("input", () => enforceChatInputLimit(lobbyChatInput));
+  }
+
+  if (lobbyPresenceToggle?.dataset.bound !== "true") {
+    lobbyPresenceToggle.dataset.bound = "true";
+    lobbyPresenceToggle.addEventListener("click", () => {
+      const expanded = lobbyPresenceList?.hidden ?? true;
+      if (lobbyPresenceList) {
+        lobbyPresenceList.hidden = !expanded;
+      }
+      lobbyPresenceToggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+      renderLobbyPresence();
+      requestServerPresence();
+    });
   }
 
   if (gameChatForm?.dataset.bound !== "true") {
@@ -6695,6 +6777,29 @@ function handleChatRejected(message) {
   setChatInputStatus(`채팅 실패: ${message.message ?? "서버에서 거절되었습니다."}`);
 }
 
+function handlePresenceUpdate(message) {
+  if (!Array.isArray(message.online)) {
+    return;
+  }
+
+  const unique = new Map();
+  message.online.forEach((entry) => {
+    const id = String(entry?.playerId ?? "").trim();
+    if (!id || unique.has(id)) {
+      return;
+    }
+    unique.set(id, {
+      playerId: id,
+      nickname: normalizePresenceName(entry?.nickname, id),
+      connectedAt: Number(entry?.connectedAt ?? 0),
+      lastSeen: Number(entry?.lastSeen ?? 0)
+    });
+  });
+  onlinePresence = Array.from(unique.values())
+    .sort((a, b) => a.nickname.localeCompare(b.nickname, "ko-KR"));
+  renderLobbyPresence();
+}
+
 function isKnownChatRoom(roomId) {
   return roomId === LOBBY_CHAT_ROOM_ID || roomId === lobbySession.currentRoom?.id;
 }
@@ -6761,6 +6866,7 @@ function renderSessionChat() {
       lobbyChatInput.placeholder = lobbySession.currentRoom?.id ? "방에 메시지 보내기" : "로비에 메시지 보내기";
     }
   }
+  renderLobbyPresence();
   if (gameChatPanel) {
     gameChatPanel.hidden = !gameStarted;
   }
@@ -6785,6 +6891,61 @@ function renderSessionChat() {
   }
 
   renderChatBadge();
+}
+
+function renderLobbyPresence() {
+  if (!lobbyPresenceToggle) {
+    return;
+  }
+
+  const people = onlinePresence.length ? onlinePresence : getFallbackLobbyPresence();
+  lobbyPresenceToggle.textContent = `현재 접속 인원 수: ${people.length}명`;
+
+  if (!lobbyPresenceList) {
+    return;
+  }
+
+  lobbyPresenceList.innerHTML = people.length
+    ? people.map((entry) => `<li>${escapeHtml(entry.nickname)}</li>`).join("")
+    : "<li>접속자 없음</li>";
+}
+
+function getFallbackLobbyPresence() {
+  const people = new Map();
+  if (lobbySession.accountId || lobbySession.localPlayerId) {
+    const id = lobbySession.accountId || lobbySession.localPlayerId;
+    people.set(id, {
+      playerId: id,
+      nickname: normalizePresenceName(lobbySession.nickname, id),
+      connectedAt: Date.now(),
+      lastSeen: Date.now()
+    });
+  }
+
+  getStoredRooms().forEach((room) => {
+    getRoomSlots(room).forEach((slot) => {
+      if (slot.type !== "player" || !slot.playerId || !slot.connected) {
+        return;
+      }
+      people.set(slot.playerId, {
+        playerId: slot.playerId,
+        nickname: normalizePresenceName(slot.nickname, slot.playerId),
+        connectedAt: slot.joinedAt ?? room.createdAt ?? 0,
+        lastSeen: slot.lastSeen ?? 0
+      });
+    });
+  });
+
+  return Array.from(people.values()).sort((a, b) => a.nickname.localeCompare(b.nickname, "ko-KR"));
+}
+
+function normalizePresenceName(name, fallbackId = "") {
+  const value = String(name ?? "").trim();
+  if (value) {
+    return value.slice(0, 24);
+  }
+  const id = String(fallbackId ?? "").trim();
+  return id ? `Player ${id.slice(-4)}` : "Player";
 }
 
 function renderChatMessage(message) {
@@ -7742,24 +7903,6 @@ function sendCosmeticAction(action, itemId) {
   });
 
   setStartStatus(ok ? `${item.label} 요청을 서버에 전송했습니다.` : "서버 연결 후 상점을 사용할 수 있습니다.");
-}
-
-function sendDebugGrantValue(amount = 500) {
-  if (!lobbySession.accountId) {
-    setStartStatus("로그인 후 디버그 가치를 지급할 수 있습니다.");
-    return;
-  }
-
-  const ok = sendServerMessage({
-    type: "accountAction",
-    action: "debugGrantValue",
-    amount,
-    sourceId: lobbySession.localPlayerId,
-    nickname: lobbySession.nickname,
-    at: Date.now()
-  });
-
-  setStartStatus(ok ? `디버그 가치 +${formatValue(amount)} 요청을 서버에 전송했습니다.` : "서버 연결 후 디버그 지급을 사용할 수 있습니다.");
 }
 
 function handleTileClick(tile, { fromRemote = false } = {}) {
@@ -9392,13 +9535,25 @@ function bindAudioUnlock() {
 function flushQueuedSounds() {
   while (queuedSounds.length > 0) {
     const sound = queuedSounds.shift();
+    const soundKey = SOUND_URL_TO_KEY[sound.url] ?? null;
+    if (!isSoundAllowedNow(soundKey)) {
+      continue;
+    }
     playSound(sound.url, { volume: sound.volume, delay: sound.delay }, { allowQueue: false });
   }
 }
 
 function playSound(url, { volume = 0.8, delay = 0 } = {}, { allowQueue = true } = {}) {
+  const soundKey = SOUND_URL_TO_KEY[url] ?? null;
+  if (!isSoundAllowedNow(soundKey)) {
+    return;
+  }
+
   window.setTimeout(() => {
-    const soundKey = SOUND_URL_TO_KEY[url] ?? null;
+    if (!isSoundAllowedNow(soundKey)) {
+      return;
+    }
+
     const masterGain = (SOUND_SETTINGS.master ?? 100) / 100;
     const soundGain = soundKey ? (SOUND_SETTINGS[soundKey] ?? 100) / 100 : 1;
     const finalVolume = Math.max(0, Math.min(1, volume * masterGain * soundGain));
@@ -9411,11 +9566,19 @@ function playSound(url, { volume = 0.8, delay = 0 } = {}, { allowQueue = true } 
     audio.preload = "auto";
     audio.volume = finalVolume;
     audio.play().catch(() => {
-      if (allowQueue && !audioUnlocked) {
+      if (allowQueue && !audioUnlocked && isSoundAllowedNow(soundKey)) {
         queuedSounds.push({ url, volume, delay: 0 });
       }
     });
   }, delay);
+}
+
+function isSoundAllowedNow(soundKey) {
+  if (!soundKey || !GAMEPLAY_SOUND_KEYS.has(soundKey)) {
+    return true;
+  }
+
+  return Boolean((gameStarted || gameStarting) && lobbySession.currentRoom && state);
 }
 
 function playCardSfx(kind) {

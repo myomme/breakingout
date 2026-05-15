@@ -868,6 +868,63 @@ body {
   font-weight: 900;
 }
 
+.session-chat-presence {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 30px;
+  margin: 0 12px;
+  border: 1px solid rgba(185, 232, 109, 0.16);
+  border-radius: 7px;
+  background: rgba(185, 232, 109, 0.07);
+  color: rgba(238, 248, 210, 0.88);
+  padding: 0 10px;
+  font-size: 11px;
+  font-weight: 950;
+  text-align: left;
+}
+
+.session-chat-presence::after {
+  content: "⌄";
+  color: rgba(238, 248, 210, 0.62);
+  font-size: 14px;
+  line-height: 1;
+}
+
+.session-chat-presence[aria-expanded="true"]::after {
+  content: "⌃";
+}
+
+.session-chat-presence-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+  gap: 6px;
+  max-height: 112px;
+  margin: -2px 12px 0;
+  overflow: auto;
+  padding: 0;
+  list-style: none;
+  scrollbar-width: thin;
+}
+
+.session-chat-presence-list[hidden] {
+  display: none;
+}
+
+.session-chat-presence-list li {
+  min-width: 0;
+  border: 1px solid rgba(210, 221, 207, 0.1);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.045);
+  color: rgba(238, 242, 232, 0.84);
+  padding: 6px 8px;
+  font-size: 11px;
+  font-weight: 850;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .session-chat-messages {
   display: grid;
   align-content: start;
@@ -988,7 +1045,9 @@ body {
 }
 
 .session-chat.is-collapsed .session-chat-messages,
-.session-chat.is-collapsed .session-chat-form {
+.session-chat.is-collapsed .session-chat-form,
+.session-chat.is-collapsed .session-chat-presence,
+.session-chat.is-collapsed .session-chat-presence-list {
   display: none;
 }
 
@@ -2050,7 +2109,7 @@ button.room-slot-ready {
 }
 
 .guide-book-tabs {
-  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(36px, 1fr));
 }
 
 .guide-book-tabs button {
@@ -5740,6 +5799,18 @@ dd {
     min-height: 70px;
     max-height: 132px;
     padding: 0 10px;
+  }
+
+  .session-chat--lobby .session-chat-presence {
+    margin: 0 10px;
+    min-height: 28px;
+    font-size: 10px;
+  }
+
+  .session-chat--lobby .session-chat-presence-list {
+    grid-template-columns: repeat(auto-fit, minmax(82px, 1fr));
+    max-height: 76px;
+    margin-inline: 10px;
   }
 
   .session-chat--lobby .session-chat-form {
