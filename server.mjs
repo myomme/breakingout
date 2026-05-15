@@ -2401,6 +2401,8 @@ function publishServerSnapshot(room, session, reason = "state", meta = {}) {
   broadcast(payload);
   if (reason === "eventReveal") {
     session.state.lastEventDraws = [];
+    session.state.lastEventResults = [];
+    session.state.pendingEventDiceRolls = [];
   }
   return payload;
 }

@@ -1439,7 +1439,7 @@ function ensureSupportReportUi() {
   supportReportButton.className = "support-report-button";
   supportReportButton.type = "button";
   supportReportButton.setAttribute("aria-label", "신고 및 건의");
-  supportReportButton.innerHTML = `<span>!</span><em>버그 제보</em>`;
+  supportReportButton.innerHTML = `<span>!</span>`;
 
   supportReportOverlay = document.createElement("div");
   supportReportOverlay.id = "supportReportOverlay";
@@ -5436,9 +5436,7 @@ async function playRemoteLootReveal(meta = {}, version = Date.now()) {
 
   playedAttackRevealVersions.add(`loot-${version}`);
   setTabUnread("bag", activeDrawerTab !== "bag");
-  actionLog.textContent = meta.items.length > 1
-    ? `${meta.items.length}개 아이템 획득`
-    : `${meta.items[0]?.name ?? "아이템"} 획득`;
+  actionLog.textContent = "루팅 완료";
   renderer.render();
   updateUi({ skipSnapshotBroadcast: true });
   await playLootRevealItems(meta.items);
@@ -6592,8 +6590,10 @@ function handleChatAction(button) {
 
   if (button.dataset.chatAction === "toggle") {
     const collapsed = panel.classList.toggle("is-collapsed");
-    button.textContent = collapsed ? "+" : "-";
+    button.textContent = "-";
     if (!collapsed && target === "game") {
+      unreadGameChatCount = 0;
+      renderChatBadge();
       gameChatInput?.focus();
     }
     return;
@@ -6623,9 +6623,7 @@ function handleChatEnterShortcut(event) {
   if (typing) {
     event.preventDefault();
     sendChatFromInput(gameChatInput);
-    gameChatInput?.blur();
-    gameChatPanel?.classList.add("is-collapsed");
-    gameChatToggle?.setAttribute("aria-expanded", "false");
+    gameChatInput?.focus();
     return;
   }
 
@@ -6640,6 +6638,8 @@ function handleChatEnterShortcut(event) {
   }
   gameChatPanel?.classList.remove("is-collapsed");
   gameChatToggle?.setAttribute("aria-expanded", "true");
+  unreadGameChatCount = 0;
+  renderChatBadge();
   gameChatInput?.focus();
 }
 
@@ -8130,7 +8130,7 @@ async function runPendingTileAction(action, { fromRemote = false } = {}) {
         items: item.items ?? [item]
       });
     }
-    actionLog.textContent = item ? `${item.name} acquired (${item.value})` : "No more loot is available on this tile.";
+    actionLog.textContent = item ? "루팅 완료" : "이 타일에는 더 이상 루팅할 것이 없습니다.";
     clearPendingTileAction();
     renderer.render();
     updateUi();
@@ -8340,7 +8340,7 @@ async function runLootAction({ fromRemote = false } = {}) {
       items: item.items ?? [item]
     });
   }
-  actionLog.textContent = item ? `${item.name} acquired (${item.value})` : "No more loot is available on this tile.";
+  actionLog.textContent = item ? "루팅 완료" : "이 타일에는 더 이상 루팅할 것이 없습니다.";
   renderer.render();
   updateUi();
   if (item) {
@@ -9285,12 +9285,9 @@ async function playPendingEventResults() {
       continue;
     }
 
-    const itemNames = result.items.map((item) => `${item.name}(${item.value})`).join(", ");
-    state.raidLog.unshift(`${result.playerName} 이벤트 획득: ${itemNames}`);
-
     if (result.playerId === viewer.id) {
       setTabUnread("bag", activeDrawerTab !== "bag");
-      actionLog.textContent = `${result.card?.name ?? "이벤트"} 획득: ${itemNames}`;
+      actionLog.textContent = "이벤트 보상 획득";
       renderer.render();
       updateUi();
       await playLootRevealItems(result.items);
@@ -10714,9 +10711,11 @@ function renderRaidLog() {
 }
 
 function isPlayerVisibleLogEntry(entry) {
-  return !/^COM \d+/.test(entry)
-    && !/^Event: COM \d+/.test(entry)
-    && !entry.includes("COM ");
+  return /^Phase \d+ start$/.test(entry)
+    || /^Raid \d+ started$/.test(entry)
+    || / turn$/.test(entry)
+    || /^Raid complete\./.test(entry)
+    || /^Raid failed\./.test(entry);
 }
 
 function renderKillLog() {
