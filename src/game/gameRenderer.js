@@ -728,8 +728,9 @@ export class GameRenderer {
       const renderPosition = this.getAnimatedUnitPosition(player.id) ?? player.position;
       const center = this.worldToScreen(this.hexToWorld(renderPosition));
       const hitFlash = this.effects.some((effect) => effect.type === "hit" && effect.targetId === player.id);
-      const tokenSkin = player.cosmetics?.equipped?.tokenSkin ?? "default";
-      const tokenRing = player.cosmetics?.equipped?.tokenRing ?? "default";
+      const equippedCosmetics = getEquippedCosmetics(player.cosmetics);
+      const tokenSkin = equippedCosmetics.tokenSkin ?? "default";
+      const tokenRing = equippedCosmetics.tokenRing ?? "default";
       const tokenRadius = this.getPlayerTokenRadius(active);
       const detailLevel = this.getTokenDetailLevel();
       const fillColor = getPlayerTokenFill({ active, attackable, hitFlash, tokenSkin });
@@ -1302,6 +1303,14 @@ function degreesToRadians(degrees) {
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
+}
+
+function getEquippedCosmetics(cosmetics) {
+  if (!cosmetics) {
+    return {};
+  }
+
+  return cosmetics.equipped ?? cosmetics;
 }
 
 function getPlayerTokenFill({ active, attackable, hitFlash, tokenSkin }) {

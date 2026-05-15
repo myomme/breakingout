@@ -757,12 +757,6 @@ body {
   min-height: 42px;
 }
 
-.lobby-test-actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-
 .room-map-card {
   display: grid;
   gap: 10px;
@@ -5631,17 +5625,12 @@ dd {
 
   .lobby-actions > button,
   .account-auth-actions > button,
-  .lobby-test-actions > button,
   .room-header > button,
   .room-list-header > button,
   #enterLobbyButton,
   #startGameButton {
     width: 100%;
     min-height: 42px;
-  }
-
-  .lobby-test-actions {
-    grid-template-columns: 1fr;
   }
 
   .room-map-card {

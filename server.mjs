@@ -2153,7 +2153,7 @@ function getServerPlayerLoadouts(room) {
         isAi: false,
         weaponId: slot.weaponId ?? "AR",
         armorId: slot.armorId ?? "lightSet",
-        cosmetics: slot.cosmetics?.equipped ?? slot.cosmetics ?? null
+        cosmetics: slot.cosmetics ?? null
       };
     });
 }

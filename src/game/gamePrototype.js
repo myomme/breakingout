@@ -102,8 +102,6 @@ const roomList = document.querySelector("#roomList");
 const roomCodeLabel = document.querySelector("#roomCodeLabel");
 const leaveRoomButton = document.querySelector("#leaveRoomButton");
 const roomSlotList = document.querySelector("#roomSlotList");
-const addMockPlayerButton = document.querySelector("#addMockPlayerButton");
-const clearMockPlayersButton = document.querySelector("#clearMockPlayersButton");
 const roomMapImport = document.querySelector("#roomMapImport");
 const roomMapName = document.querySelector("#roomMapName");
 const roomMapStatus = document.querySelector("#roomMapStatus");
@@ -1909,8 +1907,6 @@ function normalizeLobbyCopy() {
     [".room-list-header h2", "방 목록"],
     ["#refreshRoomsButton", "새로고침"],
     ["#leaveRoomButton", "나가기"],
-    ["#addMockPlayerButton", "테스트 플레이어 추가"],
-    ["#clearMockPlayersButton", "테스트 인원 비우기"],
     ["#startGameButton", "게임 시작"],
     ["#startOverlayStatus", "계정으로 로그인하거나 새 계정을 생성하세요."]
   ]);
@@ -2376,8 +2372,6 @@ function bindLobbyEvents() {
   });
   refreshRoomsButton?.addEventListener("click", refreshRoomListFromServer);
   leaveRoomButton?.addEventListener("click", leaveRoom);
-  addMockPlayerButton?.addEventListener("click", addMockPlayerToRoom);
-  clearMockPlayersButton?.addEventListener("click", clearMockPlayersFromRoom);
   roomMapImport?.addEventListener("change", (event) => {
     void handleRoomMapImport(event);
   });
@@ -2841,57 +2835,6 @@ function leaveRoom() {
   renderLobby();
   showLobbyStep("lobby");
   setStartStatus("로비로 돌아왔습니다.");
-}
-
-function addMockPlayerToRoom() {
-  const room = lobbySession.currentRoom;
-  if (!room || !isLocalHost()) {
-    setStartStatus("테스트 인원 추가는 방장만 사용할 수 있습니다.");
-    return;
-  }
-
-  const currentTotal = (room.players?.length ?? 0) + getConfiguredAiCount();
-  if (currentTotal >= room.maxPlayers) {
-    setStartStatus("방 슬롯이 가득 찼습니다. COM 수를 줄이거나 빈 슬롯을 확보하세요.");
-    return;
-  }
-
-  const mockIndex = (room.players ?? []).filter((player) => player.isMock).length + 2;
-  room.slots = getRoomSlots(room);
-  const openSlot = room.slots.find((slot) => slot.type === "open");
-  if (!openSlot) return;
-  Object.assign(openSlot, {
-    type: "player",
-    playerId: createLocalId("mock"),
-    nickname: `Test Player ${mockIndex}`,
-    weaponId: "AR",
-    armorId: "lightSet",
-    ready: true,
-    connected: true,
-    lastSeen: Date.now(),
-    disconnectedAt: null,
-    isMock: true
-  });
-  syncPlayersFromSlots(room);
-  saveRoomToStorage(room);
-  renderRoomPanel();
-  renderRoomList();
-  setStartStatus("로컬 테스트 플레이어를 추가했습니다. 실제 멀티 접속자는 서버 연결 단계에서 동기화됩니다.");
-}
-
-function clearMockPlayersFromRoom() {
-  const room = lobbySession.currentRoom;
-  if (!room || !isLocalHost()) {
-    setStartStatus("테스트 인원 정리는 방장만 사용할 수 있습니다.");
-    return;
-  }
-
-  room.slots = getRoomSlots(room).map((slot) => slot.isMock ? { type: "open", weaponId: "AR", armorId: "lightSet" } : slot);
-  syncPlayersFromSlots(room);
-  saveRoomToStorage(room);
-  renderRoomPanel();
-  renderRoomList();
-  setStartStatus("로컬 테스트 인원을 비웠습니다.");
 }
 
 async function handleRoomMapImport(event) {
@@ -3437,12 +3380,6 @@ function renderRoomPanel() {
   if (comPlayerCount) comPlayerCount.closest(".start-option-field")?.setAttribute("hidden", "");
   playerLoadoutSettings?.setAttribute("hidden", "");
   comLoadoutSettings?.setAttribute("hidden", "");
-  if (addMockPlayerButton) {
-    addMockPlayerButton.disabled = !host || gameStarted;
-  }
-  if (clearMockPlayersButton) {
-    clearMockPlayersButton.disabled = !host || gameStarted;
-  }
   if (roomMapImport) {
     roomMapImport.disabled = !host || gameStarted;
   }
