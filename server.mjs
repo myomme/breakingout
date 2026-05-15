@@ -35,6 +35,7 @@ const ACCOUNT_SESSION_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 const ADMIN_KEY = process.env.ADMIN_KEY ?? "";
 const accountDb = await createAccountDb();
 const gameRules = await loadGameRules();
+const deletedAccountIds = await loadDeletedAccountIds();
 const accounts = await loadAccounts();
 const ACCOUNT_STORAGE_MODE = accountDb ? "postgres" : ACCOUNT_DB_PERSISTENT ? "persistent-path" : "ephemeral-app-path";
 let accountSaveTimer = 0;
@@ -311,6 +312,7 @@ async function handleAdminAccountDeleteRequest(request, response, url) {
   }
 
   accounts.delete(accountId);
+  deletedAccountIds.add(accountId);
   removeAccountFromRooms(accountId);
   await saveAccounts();
   broadcastAccountDeleted(accountId, "운영자가 계정을 정지(삭제)했습니다.");
@@ -1087,6 +1089,12 @@ async function createAccountDb() {
         updated_at bigint not null
       )
     `);
+    await pool.query(`
+      create table if not exists deleted_accounts (
+        account_id text primary key,
+        deleted_at bigint not null
+      )
+    `);
     return pool;
   } catch (error) {
     console.warn(`PostgreSQL account storage unavailable: ${error.message}`);
@@ -1119,15 +1127,33 @@ function shouldUsePostgresSsl() {
 async function loadAccounts() {
   if (accountDb) {
     const result = await accountDb.query("select account_id, data from accounts");
-    return new Map(result.rows.map((row) => [row.account_id, row.data]));
+    return new Map(result.rows
+      .filter((row) => !deletedAccountIds.has(row.account_id))
+      .map((row) => [row.account_id, row.data]));
   }
 
   try {
     const raw = await fs.readFile(ACCOUNT_DB_PATH, "utf8");
     const parsed = JSON.parse(raw);
-    return new Map(Object.entries(parsed.accounts ?? {}));
+    return new Map(Object.entries(parsed.accounts ?? {})
+      .filter(([accountId]) => !deletedAccountIds.has(accountId)));
   } catch {
     return new Map();
+  }
+}
+
+async function loadDeletedAccountIds() {
+  if (accountDb) {
+    const result = await accountDb.query("select account_id from deleted_accounts");
+    return new Set(result.rows.map((row) => row.account_id));
+  }
+
+  try {
+    const raw = await fs.readFile(ACCOUNT_DB_PATH, "utf8");
+    const parsed = JSON.parse(raw);
+    return new Set(parsed.deletedAccounts ?? []);
+  } catch {
+    return new Set();
   }
 }
 
@@ -1142,6 +1168,19 @@ function scheduleAccountSave() {
 async function saveAccounts() {
   if (accountDb) {
     const entries = [...accounts.entries()];
+    const deletedEntries = [...deletedAccountIds];
+    if (deletedEntries.length > 0) {
+      await accountDb.query("delete from accounts where account_id = any($1::text[])", [deletedEntries]);
+      await Promise.all(deletedEntries.map((accountId) => accountDb.query(
+        `
+          insert into deleted_accounts (account_id, deleted_at)
+          values ($1, $2)
+          on conflict (account_id)
+          do update set deleted_at = excluded.deleted_at
+        `,
+        [accountId, Date.now()]
+      )));
+    }
     await Promise.all(entries.map(([accountId, account]) => accountDb.query(
       `
         insert into accounts (account_id, data, updated_at)
@@ -1158,6 +1197,7 @@ async function saveAccounts() {
   await fs.writeFile(ACCOUNT_DB_PATH, JSON.stringify({
     version: 1,
     updatedAt: Date.now(),
+    deletedAccounts: [...deletedAccountIds],
     accounts: Object.fromEntries(accounts)
   }, null, 2));
 }
@@ -1221,6 +1261,9 @@ function normalizeAccount(account, playerId, nickname = "") {
 
 function getAccountRecord(playerId, nickname = "") {
   if (!playerId) return createDefaultAccount("", nickname);
+  if (deletedAccountIds.has(playerId)) {
+    return createDefaultAccount("", nickname);
+  }
   const account = normalizeAccount(accounts.get(playerId), playerId, nickname);
   if (!accounts.has(playerId) || (nickname && account.nickname !== nickname)) {
     account.updatedAt = Date.now();
@@ -1265,6 +1308,10 @@ function registerAccount(client, message) {
   }
 
   const accountId = getRegisteredAccountId(username);
+  if (deletedAccountIds.has(accountId)) {
+    sendAccountAuthFailure(client, "운영자에 의해 정지(삭제)된 계정입니다.");
+    return;
+  }
   if (accounts.has(accountId)) {
     sendAccountAuthFailure(client, "이미 존재하는 계정 ID입니다.");
     return;
@@ -1287,6 +1334,10 @@ function loginAccount(client, message) {
   const username = normalizeUsername(message.username);
   const password = String(message.password ?? "");
   const accountId = getRegisteredAccountId(username);
+  if (deletedAccountIds.has(accountId)) {
+    sendAccountAuthFailure(client, "운영자에 의해 정지(삭제)된 계정입니다.");
+    return;
+  }
   const account = accounts.get(accountId);
   if (!username || !account?.passwordHash || !account.passwordSalt) {
     sendAccountAuthFailure(client, "계정 ID 또는 비밀번호가 올바르지 않습니다.");
@@ -1301,6 +1352,14 @@ function loginAccount(client, message) {
 
 function resumeAccount(client, message) {
   const accountId = String(message.accountId ?? "");
+  if (deletedAccountIds.has(accountId)) {
+    sendAccountAuthFailure(client, "운영자에 의해 정지(삭제)된 계정입니다.");
+    return;
+  }
+  if (!accounts.has(accountId)) {
+    sendAccountAuthFailure(client, "Saved login session expired.");
+    return;
+  }
   const account = normalizeAccount(accounts.get(accountId), accountId);
   const tokenHash = hashSessionToken(message.sessionToken);
   const now = Date.now();
@@ -1344,6 +1403,10 @@ function logoutAccount(client, message) {
 }
 
 function completeAccountAuth(client, account) {
+  if (deletedAccountIds.has(account.accountId)) {
+    sendAccountAuthFailure(client, "운영자에 의해 정지(삭제)된 계정입니다.");
+    return;
+  }
   const sessionToken = crypto.randomBytes(32).toString("hex");
   const normalized = normalizeAccount(account, account.accountId, account.nickname);
   normalized.sessions = [
@@ -1670,6 +1733,21 @@ function handleRoomAction(client, message) {
   const payload = message.payload ?? {};
   const playerId = message.sourceId ?? payload.playerId ?? null;
   let result;
+
+  if (playerId && deletedAccountIds.has(playerId)) {
+    sendJson(client, {
+      type: "roomActionResult",
+      action,
+      actionId: message.actionId ?? null,
+      ok: false,
+      message: "Account suspended by admin.",
+      room: null,
+      sourceId: "server",
+      targetPlayerId: playerId,
+      at: Date.now()
+    });
+    return;
+  }
 
   try {
     switch (action) {
